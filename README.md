@@ -215,7 +215,15 @@ Also see the examples folder for:
 * [creating supercuts from specific parts of speech](https://github.com/antiboredom/videogrep/blob/master/examples/parts_of_speech.py)
 * [creating supercuts from spacy pattern matching](https://github.com/antiboredom/videogrep/blob/master/examples/pattern_matcher.py)
 
-----
+## Roadmap / To-do
+
+- [ ] **Web Application Implementation**
+    - **Backend:** FastAPI (Python) - *Asynchronous processing for heavy transcodes.*
+    - **Frontend:** React (Vite) + Framer Motion + TailwindCSS - *Premium, animated UI.*
+    - **Storage:** Local high-speed storage optimization (D: Drive models).
+- [ ] **Interactive CLI/GUI Improvements**
+
+---
 
 ## Credits
 

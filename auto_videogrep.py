@@ -1,5 +1,11 @@
 import argparse
 import os
+
+# Set environment variables to store heavy models on D: drive
+# This must be done before importing libraries that might use these variables
+os.environ["WHISPER_CACHE_DIR"] = "D:/models/whisper"
+os.environ["HF_HOME"] = "D:/models/huggingface"
+os.environ["TORCH_HOME"] = "D:/models/torch"
 import subprocess
 import sys
 import logging
@@ -14,7 +20,7 @@ if not logger.handlers:
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
 
-def run_whisper(video_path, model="medium", language=None, prompt=None):
+def run_whisper(video_path, model="large", language=None, prompt=None):
     """
     Runs OpenAI Whisper on the video file to generate an SRT file.
     """
@@ -56,7 +62,7 @@ def run_whisper(video_path, model="medium", language=None, prompt=None):
 
 from videogrep import videogrep as run_videogrep_lib
 
-def run_videogrep(video_path, query, search_type="sentence", output_file="supercut.mp4"):
+def run_videogrep(video_path, query, search_type="sentence", output_file="supercut.mp4", padding=0.0, preview=False):
     """
     Runs videogrep using the generated SRT file.
     """
@@ -67,9 +73,12 @@ def run_videogrep(video_path, query, search_type="sentence", output_file="superc
             files=video_path,
             query=query,
             search_type=search_type,
-            output=output_file
+            output=output_file,
+            padding=padding,
+            preview=preview
         )
-        logger.info(f"[+] Supercut created: {output_file}")
+        if not preview:
+            logger.info(f"[+] Supercut created: {output_file}")
         
     except Exception as e:
         logger.error(f"[-] Error running videogrep: {e}")
@@ -78,10 +87,12 @@ def main():
     parser = argparse.ArgumentParser(description="Auto-transcribe with Whisper and run Videogrep.")
     parser.add_argument("video", help="Path to the video file.")
     parser.add_argument("query", help="Search query (regex supported).")
-    parser.add_argument("--model", default="medium", help="Whisper model size (tiny, base, small, medium, large). Default: medium.")
+    parser.add_argument("--model", default="large", help="Whisper model size (tiny, base, small, medium, large). Default: large.")
     parser.add_argument("--language", help="Language code (e.g., pt, en). If omitted, Whisper auto-detects.")
     parser.add_argument("--prompt", help="Initial prompt to guide Whisper (useful for transcribing fillers like 'hmmm').")
     parser.add_argument("--search-type", default="sentence", choices=["sentence", "fragment"], help="Videogrep search type. Default: sentence.")
+    parser.add_argument("--padding", type=float, default=0.0, help="Padding in seconds to add to the start/end of each clip. Default: 0.0.")
+    parser.add_argument("--preview", action="store_true", help="Preview the cut in mpv instead of rendering a file.")
     parser.add_argument("--output", help="Output filename. If not provided, defaults to virtuacuts_[video_name].mp4")
     parser.add_argument("--force-transcribe", action="store_true", help="Force re-transcription even if SRT exists.")
 
@@ -111,13 +122,13 @@ def main():
         # If the user is looking for thinking expressions, let's provide a default prompt 
         # unless they provided one.
         prompt = args.prompt
-        if not prompt and ("h+m+" in args.query or "u+m+" in args.query):
+        if not prompt and ("h+m+" in args.query.lower() or "u+m+" in args.query.lower()):
             prompt = "Umm, hmmm, let me see... ah, yes."
             
         run_whisper(video_path, args.model, args.language, prompt)
         
     # Run videogrep
-    run_videogrep(video_path, args.query, args.search_type, output_file)
+    run_videogrep(video_path, args.query, args.search_type, output_file, args.padding, args.preview)
 
 if __name__ == "__main__":
     main()

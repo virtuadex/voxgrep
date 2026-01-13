@@ -23,7 +23,7 @@ MAX_CHARS = 36
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model")
 
 
-def transcribe_whisper(videofile: str, model_name: str = "medium", prompt: Optional[str] = None) -> List[dict]:
+def transcribe_whisper(videofile: str, model_name: str = "large", prompt: Optional[str] = None) -> List[dict]:
     """
     Transcribes a video file using OpenAI Whisper
     """
@@ -154,8 +154,8 @@ def transcribe(videofile: str, model_path: Optional[str] = None, method: str = "
     # Try the intended method first
     if method == "whisper" and WHISPER_AVAILABLE:
         try:
-            # For whisper, model_path is actually the model name (e.g. 'base', 'medium')
-            _model = "medium"
+            # For whisper, model_path is actually the model name (e.g. 'base', 'medium', 'large')
+            _model = "large"
             if model_path is not None:
                 _model = model_path
             out = transcribe_whisper(videofile, _model, prompt=prompt)

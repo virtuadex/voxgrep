@@ -1,4 +1,10 @@
 import sys
+import os
+
+# Set environment variables to store heavy models on D: drive
+os.environ["WHISPER_CACHE_DIR"] = "D:/models/whisper"
+os.environ["HF_HOME"] = "D:/models/huggingface"
+os.environ["TORCH_HOME"] = "D:/models/torch"
 import argparse
 import videogrep
 from videogrep import transcribe
