@@ -1,6 +1,8 @@
 import videogrep
 from glob import glob
+from glob import glob
 from subprocess import run
+import videogrep.modules.youtube
 
 
 def auto_youtube_supercut(query, max_videos=1):
@@ -9,21 +11,17 @@ def auto_youtube_supercut(query, max_videos=1):
     and then makes a supercut with that query
     """
 
-    args = [
-        "yt-dlp",  # run yt-dlp
-        "https://www.youtube.com/results?search_query=" + query,
-        "--write-auto-sub",  # download youtube's auto-generated subtitles
-        "-f",  # select the format of the video
-        "22",  # 22 is 1280x720 mp4
-        "--max-downloads",  # limit the downloads
-        str(max_videos),
-        "--playlist-end",
-        str(max_videos),
-        "-o",  # where to save the downloaded videos to
-        query + "%(video_autonumber)s.mp4",  # save the video as the query + .mp4
-    ]
-
-    run(args)
+    # Download video using the new module
+    # We use a specific output format to match what videogrep expects (or what we want)
+    # The new download_video function handles the details
+    try:
+        videogrep.modules.youtube.download_video(
+            "https://www.youtube.com/results?search_query=" + query,
+            output_template=query + "%(autonumber)s.%(ext)s"
+        )
+    except Exception as e:
+        print(f"Error downloading videos: {e}")
+        return
 
     # grab the videos we just downloaded
     files = glob(query + "*.mp4")

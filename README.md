@@ -219,6 +219,6 @@ Also see the examples folder for:
 
 ## Credits
 
-Videogrep is maintained by RIDEXCASA, and was originally created by [Sam Lavigne](https://lav.io). It is built using [MoviePy](https://zulko.github.io/moviepy/) and [Vosk](https://alphacephei.com/vosk/). A big thanks goes out to all those who have [contributed](https://github.com/antiboredom/videogrep/graphs/contributors), particuarly to [Charlie Macquarie](https://charliemacquarie.com) for his efforts in getting the project to work with audio-only media.
+Videogrep is maintained by virtuadex, and was originally created by [Sam Lavigne](https://lav.io). It is built using [MoviePy](https://zulko.github.io/moviepy/) and [Vosk](https://alphacephei.com/vosk/). A big thanks goes out to all those who have [contributed](https://github.com/antiboredom/videogrep/graphs/contributors), particuarly to [Charlie Macquarie](https://charliemacquarie.com) for his efforts in getting the project to work with audio-only media.
 
-Videogrep has received financial support from the [Department of Digital Humanities, King’s College London](https://www.kcl.ac.uk/ddh) and from the [Clinic for Open Source Arts](https://clinicopensourcearts.org/).
+

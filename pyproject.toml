@@ -2,11 +2,9 @@
 name = "videogrep"
 version = "2.3.1"
 description = "Videogrep is a command line tool that searches through dialog in video and audio files and makes supercuts based on what it finds. Like grep but for video."
-authors = ["RIDEXCASA <RIDEXCASA@users.noreply.github.com>"]
-license = "Anti-Capitalist"
+authors = ["virtuadex <subs.greedy988@simplelogin.fr>"]
 readme = "README.md"
-homepage = "http://antiboredom.github.io/videogrep/"
-repository = "https://github.com/antiboredom/videogrep"
+homepage = "soon"
 keywords = ["video", "supercut"]
 classifiers = [
   "Topic :: Multimedia :: Video",
@@ -20,6 +18,7 @@ python = "^3.8"
 beautifulsoup4 = "^4.12.3"
 moviepy = "^1.0.3"
 imageio-ffmpeg = "*"
+yt-dlp = "*"
 vosk = {version = ">=0.3.32", optional = true}
 openai-whisper = {version = "*", optional = true}
 spacy = {version = "*", optional = true}

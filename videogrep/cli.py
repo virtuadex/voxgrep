@@ -1,5 +1,15 @@
 import argparse
+import logging
 from . import get_ngrams, sphinx, videogrep, __version__
+
+# Initialize logger
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 
 def main():
@@ -101,7 +111,15 @@ def main():
         "--model",
         "-mo",
         dest="model",
-        help="model folder for transcription",
+        help="model folder (Vosk) or model name (Whisper) for transcription",
+    )
+    parser.add_argument(
+        "--transcribe-method",
+        "-tm",
+        dest="method",
+        default="whisper",
+        choices=["whisper", "vosk"],
+        help="transcription method (default: whisper)",
     )
     parser.add_argument(
         "--ngrams",
@@ -140,17 +158,10 @@ def main():
         for f in args.inputfile:
             sphinx.transcribe(f)
         return True
-
     if args.transcribe:
-        try:
-            from . import transcribe
-        except ModuleNotFoundError:
-            print("You must install vosk to transcribe files: \n\npip install vosk\n")
-            return False
-
+        from . import transcribe
         for f in args.inputfile:
-            transcribe.transcribe(f, args.model)
-
+            transcribe.transcribe(f, args.model, method=args.method)
         return True
 
     if args.search is None:
