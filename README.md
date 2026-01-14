@@ -1,234 +1,128 @@
 # Videogrep
 
-Videogrep is a command line tool that searches through dialog in video or audio files and makes supercuts based on what it finds. It will recognize `.srt` or `.vtt` subtitle tracks, or transcriptions that can be generated with vosk, pocketsphinx, and other tools.
+Videogrep is a command-line tool that searches through dialog in video or audio files and automatically generates "supercuts" based on what it finds. It supports `.srt`, `.vtt`, and `.json` (Whisper) transcriptions.
 
-#### Examples
+---
 
+## 📺 Examples
 - [The Meta Experience](https://www.youtube.com/watch?v=nGHbOckpifw)
-- [All the instances of the phrase "time" in the movie "In Time"](https://www.youtube.com/watch?v=PQMzOUeprlk)
-- [All the one to two second silences in "Total Recall"](https://www.youtube.com/watch?v=qEtEbXVbYJQ)
-- [A former press secretary telling us what he can tell us](https://www.youtube.com/watch?v=D7pymdCU5NQ)
-
-#### Tutorial
-
-See my blog for a short [tutorial on videogrep and yt-dlp](https://lav.io/notes/videogrep-tutorial/), and part 2, on [videogrep and natural language processing](https://lav.io/notes/videogrep-and-spacy/).
+- [All instances of "time" in "In Time"](https://www.youtube.com/watch?v=PQMzOUeprlk)
+- [One to two second silences in "Total Recall"](https://www.youtube.com/watch?v=qEtEbXVbYJQ)
+- [Press secretary telling us what he can tell us](https://www.youtube.com/watch?v=D7pymdCU5NQ)
 
 ---
 
-## Installation
+## 🚀 Quick Start
 
-### Dependencies
-
-- **Python**: 3.10+
-- **FFmpeg**: Required for media processing.
-  - **Mac**: Install via Homebrew: `brew install ffmpeg`
-  - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html), extract, and add the `bin` folder to your System PATH.
-
-### Install using Poetry (Recommended)
-
-This project uses [Poetry](https://python-poetry.org/) for modern dependency management.
+### Installation
+Ensure you have **Python 3.10+** and **FFmpeg** installed.
 
 ```bash
-# Install core dependencies
+# Using Poetry (Recommended)
 poetry install
+poetry install --extras "full"  # For NLP features
 
-# Install with all extra features (Vosk, Whisper, Spacy)
-poetry install --extras "full"
-```
-
-### Install using pip
-
-If you prefer standard pip:
-
-```bash
+# Using pip
 pip install videogrep
-# OR from source
-pip install .[full]
+```
+
+### Basic Usage
+Search for a phrase and generate a supercut:
+```bash
+videogrep --input video.mp4 --search "search phrase"
+```
+
+### ⚠️ Important: Subtitle Mapping
+Videogrep requires a matching subtitle track for every media file. **The video/audio file and subtitle file must have the exact same name**, excluding the extension:
+- ✅ `movie.mp4` + `movie.srt`
+- ❌ `movie.mp4` + `movie_subtitles.srt`
+
+---
+
+## 🎙️ Transcription
+If you don't have subtitles, Videogrep can generate them using OpenAI's Whisper.
+
+**Built-in Transcription:**
+```bash
+videogrep -i video.mp4 --transcribe --model medium
+```
+
+**Using the Automation Script:**
+```bash
+python auto_videogrep.py video.mp4 "search query" --model large-v3
 ```
 
 ---
 
-## Transcription
+## 🛠️ CLI Options Reference
 
-Videogrep supports multiple ways to generate transcriptions if you don't have subtitle files.
+### Search & Logic
+| Option | Short | Description |
+| :--- | :--- | :--- |
+| `--search` | `-s` | Regex search term (can be used multiple times). |
+| `--search-type` | `-st` | `sentence` (default), `fragment` (exact phrase), or `mash` (random). |
+| `--max-clips` | `-m` | Maximum number of clips to include. |
+| `--randomize` | `-r` | Randomize clip order. |
 
-### Whisper (Built-in)
+### Transcription (Whisper)
+| Option | Short | Description |
+| :--- | :--- | :--- |
+| `--transcribe` | `-tr` | Transcribe input using OpenAI Whisper. |
+| `--model` | `-mo` | Whisper model (`base`, `medium`, `large-v3`, etc.). |
+| `--language` | `-l` | Language code (e.g., `en`, `pt`, `fr`). |
+| `--device` | `-dev` | Device to use (`cpu` or `cuda`). |
+| `--compute-type`| `-ct` | Precision (`int8`, `float16`, `int8_float16`). |
 
-To transcribe video/audio using OpenAI's Whisper:
+### Input & Output
+| Option | Short | Description |
+| :--- | :--- | :--- |
+| `--input` | `-i` | Input file(s). Supports glob patterns. |
+| `--output` | `-o` | Output filename (default: `supercut.mp4`). |
+| `--export-clips`| `-ec` | Save clips as individual files instead of a single supercut. |
+| `--export-vtt`  | `-ev` | Export the supercut transcript as a `.vtt` file. |
 
-```
-videogrep -i vid.mp4 --transcribe
-```
-
-This will generate a `.json` file in the same folder as the video. By default this uses Whisper's `medium` model. You can specify a different model with the `--model` flag.
-
-### Whisper (via auto_videogrep.py)
-
-For high-quality transcription using OpenAI's Whisper, you can use the included `auto_videogrep.py` script:
-
-```
-python auto_videogrep.py vid.mp4 "search query" --model medium
-```
-
-This script will automatically transcribe the video using Whisper, save an `.srt` file, and then run `videogrep` on it.
-
-## Usage
-
-The most basic use:
-
-```
-videogrep --input path/to/video.mp4 --search 'search phrase'
-```
-
-It works with audio too:
-
-```
-videogrep --input path/to/audio.mp3 --search 'search phrase'
-```
-
-You can put any regular expression in the search phrase.
-
-**NOTE: videogrep requires a matching subtitle track with each video you want to use. The video/audio file and subtitle file need to have the exact same name, up to the extension.** For example, `my_movie.mp4` and `my_movie.srt` will work, and `my_movie.mp4` and `my_movie_subtitle.srt` will _not_ work.
-
-Videogrep will search for matching `srt` and `vtt` subtitles, as well as `json` transcript files that can be generated with the `--transcribe` argument.
-
-### Options
-
-#### `--input [filename(s)] / -i [filename(s)]`
-
-File or files to use as input. Most video or audio formats should work. If you mix audio and video input files, the resulting output will only be audio.
-
-#### `--output [filename] / -o [filename]`
-
-Name of the file to generate. By default this is `supercut.mp4`. Any standard video or audio extension will also work. (If you're using audio input or mixed audio and video input and you keep the default `supercut.mp4` as the output filename, videogrep will automatically change the output to `supercut.mp3`)
-
-Videogrep will also recognize the following extensions for saving files:
-
-- `.mpv.edl`: generates an edl file playable by [mpv](https://mpv.io/) (useful for previews)
-- `.m3u`: media playlist
-- `.xml`: Final Cut Pro timeline, compatible with Adobe Premiere and Davinci Resolve
-
-```
-videogrep --input path/to/video --search 'search phrase' --output coolvid.mp4
-```
-
-#### `--search [query] / -s [query]`
-
-Search term, as a regular expression. You can add as many of these as you want. For example:
-
-```
-videogrep --input path/to/video --search 'search phrase' --search 'another search' --search 'a third search' --output coolvid.mp4
-```
-
-#### `--search-type [type] / -st [type]`
-
-Type of search you want to perform. There are two options:
-
-- `sentence`: (default): Generates clips containing the full sentences of your search query.
-- `fragment`: Generates clips containing the exact word or phrase of your search query.
-
-Both options take regular expressions. You may only use the `fragment` search if your transcript has word-level timestamps, which will be the case for youtube `.vtt` files, or if you generated a transcript using Videogrep itself.
-
-```
-videogrep --input path/to/video --search 'experience' --search-type fragment
-```
-
-#### `--max-clips [num] / -m [num]`
-
-Maximum number of clips to use for the supercut.
-
-#### `--demo / -d`
-
-Show the search results without making the supercut.
-
-#### `--preview / -pr`
-
-Preview the supercut in mpv (requires [mpv to be installed](https://mpv.io/))
-
-#### `--randomize / -r`
-
-Randomize the order of the clips.
-
-#### `--padding [seconds] / -p [seconds]`
-
-Padding in seconds to add to the start and end of each clip.
-
-#### `--resyncsubs [seconds] / -rs [seconds]`
-
-Time in seconds to shift the shift the subtitles forwards or backwards.
-
-#### `--transcribe / -tr`
-
-Transcribe the video/audio using OpenAI's Whisper. This will generate a `.json` file in the same folder as the video. By default this uses the `medium` model.
-
-```
-videogrep -i vid.mp4 --transcribe
-```
-
-#### `--model [modelname] / -mo [modelname]`
-
-In combination with the `--transcribe` option, allows you to specify the Whisper model to use (e.g. `tiny`, `base`, `small`, `medium`, `large`).
-
-```
-videogrep -i vid.mp4 --transcribe --model path/to/model/
-```
-
-#### `--export-clips / -ec`
-
-Exports clips as individual files rather than as a supercut.
-
-```
-videogrep -i vid.mp4 --search 'whatever' --export-clips
-```
-
-#### `--export-vtt / -ev`
-
-Exports the transcript of the supercut as a WebVTT file next to the video.
-
-```
-videogrep -i vid.mp4 --search 'whatever' --export-vtt
-```
-
-#### `--ngrams [num] / -n [num]`
-
-Shows common words and phrases from the video or audio file.
-
-```
-videogrep -i vid.mp4 --ngrams 1
-```
+### Processing & Preview
+| Option | Short | Description |
+| :--- | :--- | :--- |
+| `--padding` | `-p` | Seconds to add to start/end of clips. |
+| `--resyncsubs` | `-rs` | Shift subtitles forward/backward in seconds. |
+| `--demo` | `-d` | Show results without rendering the video. |
+| `--preview` | `-pr` | Preview the supercut in `mpv`. |
+| `--ngrams` | `-n` | List common words and phrases. |
 
 ---
 
-## Use it as a module
+## 🐍 Use as a Python Module
 
-```
+```python
 from videogrep import videogrep
 
-videogrep(files='path/to/your/files', query='search_term', search_type='sentence', output='output_file_name.mp4')
+videogrep(
+    files='video.mp4', 
+    query='search term', 
+    search_type='sentence', 
+    output='output.mp4'
+)
 ```
-
-The videogrep module accepts the same parameters as the command line script. To see the usage check out the source.
-
-### Example Scripts
-
-Also see the examples folder for:
-
-- [silence extraction](https://github.com/antiboredom/videogrep/blob/master/examples/only_silence.py)
-- [automatically creating supercuts](https://github.com/antiboredom/videogrep/blob/master/examples/auto_supercut.py)
-- [creating supercuts based on youtube searches](https://github.com/antiboredom/videogrep/blob/master/examples/auto_youtube.py)
-- [creating supercuts from specific parts of speech](https://github.com/antiboredom/videogrep/blob/master/examples/parts_of_speech.py)
-- [creating supercuts from spacy pattern matching](https://github.com/antiboredom/videogrep/blob/master/examples/pattern_matcher.py)
-
-## Roadmap / To-do
-
-- [ ] **Web Application Implementation**
-  - **Backend:** FastAPI (Python) - _Asynchronous processing for heavy transcodes._
-  - **Frontend:** React (Vite) + Framer Motion + TailwindCSS - _Premium, animated UI._
-  - **Storage:** Local high-speed storage optimization (D: Drive models).
-- [ ] **Interactive CLI/GUI Improvements**
 
 ---
 
-## Credits
+## 🧪 Advanced Examples
+Check the `examples/` folder for scripts covering:
+- [Silence extraction](examples/only_silence.py)
+- [YouTube-based supercuts](examples/auto_youtube.py)
+- [POS Tagging & NLP](examples/parts_of_speech.py)
+- [Spacy Pattern Matching](examples/pattern_matcher.py)
 
-Videogrep is maintained by virtuadex, and was originally created by [Sam Lavigne](https://lav.io). It is built using [MoviePy](https://zulko.github.io/moviepy/) and [OpenAI Whisper](https://github.com/openai/whisper). A big thanks goes out to all those who have [contributed](https://github.com/antiboredom/videogrep/graphs/contributors), particuarly to [Charlie Macquarie](https://charliemacquarie.com) for his efforts in getting the project to work with audio-only media.
+---
+
+## 🗺️ Roadmap
+- [ ] **Semantic Search:** Search by concept using vector embeddings.
+- [ ] **Speaker Diarization:** Filter results by specific speakers.
+- [ ] **Embedded Subtitles:** Burn-in subtitles directly onto the supercut.
+- [ ] **Web GUI:** FastAPI backend and React frontend.
+
+---
+
+## ✍️ Credits
+Maintained by **virtuadex**, originally created by [Sam Lavigne](https://lav.io). Built with [MoviePy](https://zulko.github.io/moviepy/) and [OpenAI Whisper](https://github.com/openai/whisper). Special thanks to [Charlie Macquarie](https://charliemacquarie.com).

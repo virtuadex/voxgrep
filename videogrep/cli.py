@@ -1,15 +1,11 @@
 import argparse
 import logging
+from tqdm import tqdm
 from . import get_ngrams, sphinx, videogrep, __version__
 
 # Initialize logger
+logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
 
 
 def main():
@@ -111,7 +107,21 @@ def main():
         "--model",
         "-mo",
         dest="model",
-        help="Whisper model name (e.g. tiny, base, small, medium, large)",
+        help="Whisper model name (e.g. medium, large, large-v3). Default: large-v3",
+    )
+    parser.add_argument(
+        "--device",
+        "-dev",
+        dest="device",
+        default="cpu",
+        help="Device to use for transcription (cpu, cuda). Default: cpu",
+    )
+    parser.add_argument(
+        "--compute-type",
+        "-ct",
+        dest="compute_type",
+        default="int8",
+        help="Compute type for transcription (int8, float16, int8_float16). Default: int8",
     )
     parser.add_argument(
         "--ngrams",
@@ -159,14 +169,13 @@ def main():
         return True
 
     if args.sphinxtranscribe:
-        for f in args.inputfile:
+        for f in tqdm(args.inputfile, desc="Transcribing files", unit="file", disable=len(args.inputfile) < 2):
             sphinx.transcribe(f)
         return True
     if args.transcribe:
         from . import transcribe
-        for f in args.inputfile:
-            transcribe.transcribe(f, args.model, prompt=args.prompt, language=args.language)
-        return True
+        for f in tqdm(args.inputfile, desc="Transcribing files", unit="file", disable=len(args.inputfile) < 2):
+            transcribe.transcribe(f, args.model, prompt=args.prompt, language=args.language, device=args.device, compute_type=args.compute_type)
 
     if args.search is None:
         parser.error("argument --search/-s is required")

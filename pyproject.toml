@@ -20,12 +20,12 @@ beautifulsoup4 = "^4.12.3"
 moviepy = "^2.0.0" 
 imageio-ffmpeg = "*"
 yt-dlp = "*"
+tqdm = "^4.66.0"
 spacy = {version = "^3.8.0", optional = true}
 faster-whisper = "^1.2.1"
 
 [tool.poetry.extras]
-full = ["pywhispercpp", "spacy"]
-whisper = ["pywhispercpp"]
+full = ["spacy"]
 nlp = ["spacy"]
 
 [tool.poetry.group.dev.dependencies]

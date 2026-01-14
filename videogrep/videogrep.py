@@ -8,6 +8,7 @@ import mimetypes
 import subprocess
 import sys
 import logging
+from tqdm import tqdm
 from . import vtt, srt, sphinx, fcpxml
 from pathlib import Path
 from typing import Optional, List, Union, Iterator
@@ -221,7 +222,7 @@ def search(
 
     all_segments = []
 
-    for file in files:
+    for file in tqdm(files, desc="Searching files", unit="file", disable=len(files) < 2):
         segments = []
         transcript = parse_transcript(file, prefer=prefer)
         if transcript is None:
@@ -413,7 +414,7 @@ def create_supercut(composition: List[dict], outputfile: str):
         logger.info("[+] Creating clips.")
         videofileclips = dict([(f, VideoFileClip(f)) for f in all_filenames])
         cut_clips = []
-        for c in composition:
+        for c in tqdm(composition, desc="Creating video clips", unit="clip"):
             if c["start"] < 0:
                 c["start"] = 0
             if c["end"] > videofileclips[c["file"]].duration:
@@ -439,7 +440,7 @@ def create_supercut(composition: List[dict], outputfile: str):
         audiofileclips = dict([(f, AudioFileClip(f)) for f in all_filenames])
         cut_clips = []
 
-        for c in composition:
+        for c in tqdm(composition, desc="Creating audio clips", unit="clip"):
             if c["start"] < 0:
                 c["start"] = 0
             if c["end"] > audiofileclips[c["file"]].duration:
@@ -482,6 +483,9 @@ def create_supercut_in_batches(composition: List[dict], outputfile: str):
         if outputfile == "supercut.mp4":
             outputfile = "supercut.mp3"
 
+    num_batches = (total_clips + BATCH_SIZE - 1) // BATCH_SIZE
+    pbar = tqdm(total=num_batches, desc="Processing batches", unit="batch")
+
     while start_index < total_clips:
         filename = outputfile + ".tmp" + str(start_index) + file_ext
         try:
@@ -490,11 +494,14 @@ def create_supercut_in_batches(composition: List[dict], outputfile: str):
             gc.collect()
             start_index += BATCH_SIZE
             end_index += BATCH_SIZE
+            pbar.update(1)
         except Exception as e:
             logger.error(f"Error processing batch starting at {start_index}: {e}")
             start_index += BATCH_SIZE
             end_index += BATCH_SIZE
+            pbar.update(1)
             continue
+    pbar.close()
 
     if plan_video_output(composition, outputfile):
         clips = [VideoFileClip(filename) for filename in batch_comp]
@@ -547,7 +554,7 @@ def export_individual_clips(composition: List[dict], outputfile: str):
 
         basename, ext = os.path.splitext(outputfile)
         logger.info("[+] Writing output files.")
-        for i, clip in enumerate(cut_clips):
+        for i, clip in enumerate(tqdm(cut_clips, desc="Exporting video clips", unit="clip")):
             clipfilename = basename + "_" + str(i).zfill(5) + ext
             clip.write_videofile(
                 clipfilename,
@@ -575,7 +582,7 @@ def export_individual_clips(composition: List[dict], outputfile: str):
 
         basename, ext = os.path.splitext(outputfile)
         logger.info("[+] Writing output files.")
-        for i, clip in enumerate(cut_clips):
+        for i, clip in enumerate(tqdm(cut_clips, desc="Exporting video clips", unit="clip")):
             clipfilename = basename + "_" + str(i).zfill(5) + ext
             clip.write_audiofile(clipfilename)
 
@@ -673,6 +680,9 @@ def videogrep(
         return False
 
     # padding
+    if padding == 0 and search_type in ["fragment", "mash"]:
+        padding = 0.3
+
     segments = pad_and_sync(segments, padding=padding, resync=resync)
 
     # random order

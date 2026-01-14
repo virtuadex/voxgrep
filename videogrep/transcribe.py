@@ -8,13 +8,14 @@ import os
 import json
 import logging
 from typing import List, Optional
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
 MAX_CHARS = 36
 
 
-def transcribe_whisper(videofile: str, model_name: str = "medium", prompt: Optional[str] = None, language: Optional[str] = None) -> List[dict]:
+def transcribe_whisper(videofile: str, model_name: str = "large-v3", prompt: Optional[str] = None, language: Optional[str] = None, device: str = "cpu", compute_type: str = "int8") -> List[dict]:
     """
     Transcribes a video file using faster-whisper (CTranslate2)
     With word-level timestamps enabled.
@@ -22,19 +23,18 @@ def transcribe_whisper(videofile: str, model_name: str = "medium", prompt: Optio
     if not WHISPER_AVAILABLE:
         raise ImportError("faster-whisper is not installed. Install with 'pip install faster-whisper'")
 
-    logger.info(f"Transcribing {videofile} using faster-whisper ({model_name} model)")
-    
-    # Check for caching env var if we want to support it, otherwise default
-    # download_root = os.getenv("WHISPER_CACHE_DIR", None) 
+    logger.info(f"Transcribing {videofile} using faster-whisper ({model_name} model) on {device}")
     
     # Load model
     try:
-        # device="auto" usually selects CPU on Macs if CTranslate2 doesn't find CUDA.
-        # compute_type="int8" is efficient for CPU.
-        model = WhisperModel(model_name, device="auto", compute_type="int8")
+        model = WhisperModel(model_name, device=device, compute_type=compute_type)
     except Exception as e:
-        logger.error(f"Could not load model {model_name}: {e}")
-        raise e
+        logger.error(f"Could not load model {model_name} on {device}: {e}")
+        if device == "cuda":
+            logger.info("Falling back to CPU...")
+            model = WhisperModel(model_name, device="cpu", compute_type="int8")
+        else:
+            raise e
     
     # Transcribe
     try:
@@ -46,19 +46,15 @@ def transcribe_whisper(videofile: str, model_name: str = "medium", prompt: Optio
             language=language
         )
         
-        # faster-whisper returns a generator, so we iterate to get results
-        segments = list(segments_generator)
-        logger.info(f"Transcription finished. Detected language: {info.language}")
+        logger.info(f"Transcription started. Detected language: {info.language}")
         
-    except Exception as e:
-        logger.error(f"Error during transcription: {e}")
-        raise e
-    
-    out = []
-    
-    try:
-        for segment in segments:
+        out = []
+        pbar = tqdm(total=round(info.duration), unit="sec", desc="Transcribing")
+        last_pos = 0
+        for segment in segments_generator:
             # segment has .text, .start, .end, .words (list of Word objects)
+            pbar.update(round(segment.end - last_pos))
+            last_pos = segment.end
             
             content = segment.text.strip()
             start_sec = segment.start
@@ -82,16 +78,24 @@ def transcribe_whisper(videofile: str, model_name: str = "medium", prompt: Optio
             }
             
             out.append(item)
-            
+            # print(f"DEBUG: Processed segment: {content}")
+        
+        pbar.close()
         logger.info(f"Processed {len(out)} segments.")
+        
+        # Explicitly cleanup model to avoid crashes on return
+        del model
+        import gc
+        gc.collect()
+        
     except Exception as e:
-        logger.error(f"Error processing segments: {e}")
+        logger.error(f"Error during transcription: {e}")
         raise e
         
     return out
 
 
-def transcribe(videofile: str, model_name: str = "medium", method: str = "whisper", prompt: Optional[str] = None, language: Optional[str] = None) -> List[dict]:
+def transcribe(videofile: str, model_name: str = "large-v3", method: str = "whisper", prompt: Optional[str] = None, language: Optional[str] = None, device: str = "cpu", compute_type: str = "int8") -> List[dict]:
     """
     Transcribes a video file using Whisper.
     """
@@ -114,10 +118,10 @@ def transcribe(videofile: str, model_name: str = "medium", method: str = "whispe
         return []
 
     # Default model if None provided
-    _model = model_name if model_name else "medium"
+    _model = model_name if model_name else "large-v3"
     
     try:
-        out = transcribe_whisper(videofile, _model, prompt=prompt, language=language)
+        out = transcribe_whisper(videofile, _model, prompt=prompt, language=language, device=device, compute_type=compute_type)
     except Exception as e:
         logger.error(f"Whisper transcription failed: {e}")
         return []
@@ -126,6 +130,7 @@ def transcribe(videofile: str, model_name: str = "medium", method: str = "whispe
         logger.warning(f"No words found in {videofile}")
         return []
 
+    logger.info(f"Saving transcript to {transcript_file}")
     with open(transcript_file, "w", encoding="utf-8") as outfile:
         json.dump(out, outfile)
 
