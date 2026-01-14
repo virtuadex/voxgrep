@@ -105,21 +105,13 @@ def main():
         "-tr",
         dest="transcribe",
         action="store_true",
-        help="transcribe the video using vosk (built in)",
+        help="transcribe the video using Whisper",
     )
     parser.add_argument(
         "--model",
         "-mo",
         dest="model",
-        help="model folder (Vosk) or model name (Whisper) for transcription",
-    )
-    parser.add_argument(
-        "--transcribe-method",
-        "-tm",
-        dest="method",
-        default="whisper",
-        choices=["whisper", "vosk"],
-        help="transcription method (default: whisper)",
+        help="Whisper model name (e.g. tiny, base, small, medium, large)",
     )
     parser.add_argument(
         "--ngrams",
@@ -128,6 +120,12 @@ def main():
         type=int,
         default=0,
         help="return ngrams for videos",
+    )
+    parser.add_argument(
+        "--language",
+        "-l",
+        dest="language",
+        help="Language of the video (Whisper only)",
     )
     parser.add_argument(
         "--initial-prompt",
@@ -167,7 +165,7 @@ def main():
     if args.transcribe:
         from . import transcribe
         for f in args.inputfile:
-            transcribe.transcribe(f, args.model, method=args.method, prompt=args.prompt)
+            transcribe.transcribe(f, args.model, prompt=args.prompt, language=args.language)
         return True
 
     if args.search is None:

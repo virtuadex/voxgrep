@@ -21,7 +21,7 @@ if not logger.handlers:
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
 
-from moviepy.editor import (
+from moviepy import (
     VideoFileClip,
     AudioFileClip,
     concatenate_videoclips,
@@ -418,7 +418,7 @@ def create_supercut(composition: List[dict], outputfile: str):
                 c["start"] = 0
             if c["end"] > videofileclips[c["file"]].duration:
                 c["end"] = videofileclips[c["file"]].duration
-            cut_clips.append(videofileclips[c["file"]].subclip(c["start"], c["end"]))
+            cut_clips.append(videofileclips[c["file"]].subclipped(c["start"], c["end"]))
 
         logger.info("[+] Concatenating clips.")
         final_clip = concatenate_videoclips(cut_clips, method="compose")
@@ -444,7 +444,7 @@ def create_supercut(composition: List[dict], outputfile: str):
                 c["start"] = 0
             if c["end"] > audiofileclips[c["file"]].duration:
                 c["end"] = audiofileclips[c["file"]].duration
-            cut_clips.append(audiofileclips[c["file"]].subclip(c["start"], c["end"]))
+            cut_clips.append(audiofileclips[c["file"]].subclipped(c["start"], c["end"]))
 
         logger.info("[+] Concatenating clips.")
         final_clip = concatenate_audioclips(cut_clips)
@@ -543,7 +543,7 @@ def export_individual_clips(composition: List[dict], outputfile: str):
                 c["start"] = 0
             if c["end"] > videofileclips[c["file"]].duration:
                 c["end"] = videofileclips[c["file"]].duration
-            cut_clips.append(videofileclips[c["file"]].subclip(c["start"], c["end"]))
+            cut_clips.append(videofileclips[c["file"]].subclipped(c["start"], c["end"]))
 
         basename, ext = os.path.splitext(outputfile)
         logger.info("[+] Writing output files.")
@@ -568,7 +568,7 @@ def export_individual_clips(composition: List[dict], outputfile: str):
                 c["start"] = 0
             if c["end"] > audiofileclips[c["file"]].duration:
                 c["end"] = audiofileclips[c["file"]].duration
-            cut_clips.append(audiofileclips[c["file"]].subclip(c["start"], c["end"]))
+            cut_clips.append(audiofileclips[c["file"]].subclipped(c["start"], c["end"]))
 
         if outputfile == "supercut.mp4":
             outputfile = "supercut.mp3"
