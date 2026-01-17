@@ -16,7 +16,7 @@ async fn run_python_command<R: Runtime>(
 ) -> Result<(), String> {
     // Hardcoded for the prototype based on user's environment
     let python_path = "/Users/dex/Library/Caches/pypoetry/virtualenvs/videogrep-rHnP7eG6-py3.12/bin/python";
-    let script_path = "desktop_api.py";
+    let script_path = "desktop/desktop_api.py";
 
     let mut cmd_args = vec![script_path.to_string()];
     cmd_args.extend(args);

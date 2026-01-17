@@ -2,7 +2,7 @@ import argparse
 import logging
 from tqdm import tqdm
 from . import sphinx, videogrep, __version__
-from .search import get_ngrams
+from .search_engine import get_ngrams
 
 # Initialize logger
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -115,7 +115,7 @@ def main():
         "-dev",
         dest="device",
         default="cpu",
-        help="Device to use for transcription (cpu, cuda). Default: cpu",
+        help="Device to use for transcription (cpu, cuda, mlx). Default: cpu",
     )
     parser.add_argument(
         "--compute-type",

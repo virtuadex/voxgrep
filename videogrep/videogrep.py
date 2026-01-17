@@ -5,7 +5,7 @@ import subprocess
 import os
 from typing import List, Union
 
-from . import search as search_module
+from . import search_engine as search_module
 from . import exporter
 from . import vtt
 

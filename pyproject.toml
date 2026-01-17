@@ -23,6 +23,7 @@ yt-dlp = "*"
 tqdm = "^4.66.0"
 spacy = {version = "^3.8.0", optional = true}
 faster-whisper = "^1.2.1"
+mlx-whisper = "^0.4.3"
 
 [tool.poetry.extras]
 full = ["spacy"]

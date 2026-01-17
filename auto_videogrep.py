@@ -24,7 +24,7 @@ def run_whisper(video_path, model="large-v3", language=None, prompt=None, device
     """
     Runs faster-whisper (via videogrep.transcribe) on the video file to generate a JSON transcript.
     """
-    logger.info(f"[+] Transcribing '{video_path}' using faster-whisper (model: {model}) on {device}...")
+    logger.info(f"[+] Transcribing '{video_path}' using faster-whisper/mlx (model: {model}) on {device}...")
     
     if language:
         logger.info(f"[+] Language specified: {language}")
@@ -57,7 +57,7 @@ def main():
     parser.add_argument("--prompt", help="Initial prompt to guide Whisper (useful for transcribing fillers like 'hmmm').")
     parser.add_argument("--search-type", default="sentence", choices=["sentence", "fragment"], help="Videogrep search type. Default: sentence.")
     parser.add_argument("--padding", type=float, default=0.0, help="Padding in seconds to add to the start/end of each clip. Default: 0.0.")
-    parser.add_argument("--device", default="cpu", help="Device to use for transcription (cpu, cuda). Default: cpu.")
+    parser.add_argument("--device", default="cpu", help="Device to use for transcription (cpu, cuda, mlx). Default: cpu.")
     parser.add_argument("--compute-type", default="int8", help="Compute type for transcription (int8, float16, int8_float16). Default: int8.")
     parser.add_argument("--preview", action="store_true", help="Preview the cut in mpv instead of rendering a file.")
     parser.add_argument("--output", help="Output filename. If not provided, defaults to supercut_[video_name].mp4")

@@ -24,6 +24,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [library, setLibrary] = useState<VideoFile[]>([]);
   const [matches, setMatches] = useState<SearchMatch[]>([]);
+  const [useGPU, setUseGPU] = useState(false);
 
   useEffect(() => {
     // Listen for python events
@@ -51,20 +52,20 @@ function App() {
   }, []);
 
   const refreshLibrary = () => {
-    invoke("run_python_command", { args: ["list", "--path", "../downloads"] });
+    invoke("run_python_command", { args: ["list", "--path", "downloads"] });
   };
 
   const handleDownload = async () => {
     if (!url) return;
     setStatus("downloading");
     setProgress(10);
-    invoke("run_python_command", { args: ["download", url, "--output", "../downloads"] });
+    invoke("run_python_command", { args: ["download", url, "--output", "downloads", "--device", useGPU ? "mlx" : "cpu"] });
   };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
     if (query.length > 2) {
-      invoke("run_python_command", { args: ["search", query, "--path", "../downloads"] });
+      invoke("run_python_command", { args: ["search", query, "--path", "downloads"] });
     } else {
       setMatches([]);
     }
@@ -104,6 +105,19 @@ function App() {
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                 />
+              </div>
+
+              <div className="flex items-center gap-2 px-1">
+                 <input 
+                   type="checkbox" 
+                   id="gpuToggle"
+                   checked={useGPU}
+                   onChange={(e) => setUseGPU(e.target.checked)}
+                   className="w-4 h-4 accent-blue-500 rounded cursor-pointer"
+                 />
+                 <label htmlFor="gpuToggle" className="text-sm text-slate-400 cursor-pointer select-none">
+                   Enable GPU Acceleration (Apple Silicon)
+                 </label>
               </div>
               <button
                 onClick={handleDownload}

@@ -15,7 +15,7 @@ from videogrep import transcribe
 def emit(event, data):
     print(json.dumps({"event": event, "data": data}), flush=True)
 
-def cmd_download(url, output_dir):
+def cmd_download(url, output_dir, device="cpu"):
     os.makedirs(output_dir, exist_ok=True)
     
     emit("status", "Downloading video...")
@@ -26,12 +26,12 @@ def cmd_download(url, output_dir):
         video_path = youtube.download_video(url, output_template=template)
         emit("downloaded", {"path": video_path})
         
-        emit("status", "Transcribing...")
+        emit("status", f"Transcribing on {device}...")
         transcribe.transcribe(
             videofile=video_path,
             model_name="large-v3",
             method="whisper",
-            device="cpu", # Default to cpu for now
+            device=device, 
             compute_type="int8"
         )
         emit("transcribed", {"path": video_path})
@@ -83,6 +83,7 @@ if __name__ == "__main__":
     down_parser = subparsers.add_parser("download")
     down_parser.add_argument("url")
     down_parser.add_argument("--output", default="downloads")
+    down_parser.add_argument("--device", default="cpu")
     
     search_parser = subparsers.add_parser("search")
     search_parser.add_argument("query")
@@ -95,7 +96,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.command == "download":
-        cmd_download(args.url, args.output)
+        cmd_download(args.url, args.output, args.device)
     elif args.command == "search":
         cmd_search(args.query, args.path, args.type)
     elif args.command == "list":

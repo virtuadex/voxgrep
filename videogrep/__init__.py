@@ -7,7 +7,7 @@ from .videogrep import (
     pad_and_sync,
 )
 
-from .search import (
+from .search_engine import (
     search,
     find_transcript,
     parse_transcript,
