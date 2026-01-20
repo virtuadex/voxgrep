@@ -1,17 +1,23 @@
 __version__ = "2.3.1"
 
-# Core modules
-from . import vtt, srt, sphinx, fcpxml, config, exceptions, utils
+# Core modules (formats)
+from . import formats as formats_module
+# Expose individual format modules for backward compatibility if needed, 
+# or prefer just importing 'formats' package
+from .formats import vtt, srt, sphinx, fcpxml
+# Utils package is available as .utils
+from . import utils
 
 # Main voxgrep function
-from .voxgrep import (
+# Main voxgrep function
+from .core.logic import (
     voxgrep,
     remove_overlaps,
     pad_and_sync,
 )
 
 # Search engine
-from .search_engine import (
+from .core.engine import (
     search,
     find_transcript,
     parse_transcript,
@@ -20,7 +26,7 @@ from .search_engine import (
 )
 
 # Exporter
-from .exporter import (
+from .core.exporter import (
     create_supercut,
     create_supercut_in_batches,
     export_individual_clips,
@@ -28,8 +34,9 @@ from .exporter import (
     export_mpv_edl,
     export_xml,
     cleanup_log_files,
-    BATCH_SIZE,  # Legacy compatibility
 )
+# Note: BATCH_SIZE is better imported from utils.config directly if needed
+from .utils.config import BATCH_SIZE
 
 # Expose commonly used items from utils package
 from .utils.config import (

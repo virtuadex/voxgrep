@@ -36,14 +36,14 @@ from .exceptions import (
     SearchError,
     NoResultsFoundError,
     ExportError,
-    TranscriptionError,
-    DiarizationError,
+    TranscriptionModelNotAvailableError,
+    TranscriptionFailedError,
 )
 
 # Import from prefs
 from .prefs import (
-    get_pref,
-    set_pref,
+    load_prefs,
+    save_prefs,
 )
 
 __all__ = [
@@ -72,9 +72,9 @@ __all__ = [
     "SearchError",
     "NoResultsFoundError",
     "ExportError",
-    "TranscriptionError",
-    "DiarizationError",
+    "TranscriptionModelNotAvailableError",
+    "TranscriptionFailedError",
     # Prefs
-    "get_pref",
-    "set_pref",
+    "load_prefs",
+    "save_prefs",
 ]

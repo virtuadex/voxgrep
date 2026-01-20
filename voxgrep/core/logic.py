@@ -8,11 +8,11 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-from . import search_engine as search_module
+from . import engine as search_module
 from . import exporter
-from . import vtt
-from .utils.config import DEFAULT_PADDING, BATCH_SIZE
-from .utils.helpers import setup_logger, ensure_list, ensure_directory_exists
+from ..formats import vtt
+from ..utils.config import DEFAULT_PADDING, BATCH_SIZE
+from ..utils.helpers import setup_logger, ensure_list, ensure_directory_exists
 
 logger = setup_logger(__name__)
 

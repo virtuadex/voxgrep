@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
-from ..utils import setup_logger
+from ..utils.helpers import setup_logger
 
 logger = setup_logger(__name__)
 

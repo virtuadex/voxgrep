@@ -13,8 +13,8 @@ from datetime import datetime
 
 from sqlmodel import Session, select
 
-from ..config import get_cache_dir, DEFAULT_SEMANTIC_MODEL
-from ..utils import setup_logger
+from ..utils.config import get_cache_dir, DEFAULT_SEMANTIC_MODEL
+from ..utils.helpers import setup_logger
 from .db import engine
 from .models import Video, Embedding
 

@@ -8,8 +8,8 @@ import os
 from typing import List, Optional, Tuple, Union
 from enum import Enum
 
-from ..utils import setup_logger
-from ..config import BATCH_SIZE
+from ..utils.helpers import setup_logger
+from ..utils.config import BATCH_SIZE
 
 logger = setup_logger(__name__)
 

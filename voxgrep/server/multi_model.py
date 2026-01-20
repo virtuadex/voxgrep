@@ -15,13 +15,14 @@ from dataclasses import dataclass
 from enum import Enum
 from abc import ABC, abstractmethod
 
-from ..config import (
+from ..utils.config import (
     DEFAULT_WHISPER_MODEL,
     DEFAULT_MLX_MODEL,
     DEFAULT_DEVICE,
-    DEFAULT_COMPUTE_TYPE
+    DEFAULT_COMPUTE_TYPE,
+    get_cache_dir
 )
-from ..utils import setup_logger
+from ..utils.helpers import setup_logger
 
 logger = setup_logger(__name__)
 
