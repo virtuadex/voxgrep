@@ -25,7 +25,8 @@ fn start_backend<R: Runtime>(_app: &AppHandle<R>) -> Result<Child, String> {
     let (python_cmd, final_args) = if has_poetry {
         ("poetry", vec!["run".to_string(), "python".to_string(), "-m".to_string(), "voxgrep.server.app".to_string()])
     } else {
-        ("python3", vec!["-m".to_string(), "voxgrep.server.app".to_string()])
+        let cmd = if cfg!(windows) { "python" } else { "python3" };
+        (cmd, vec!["-m".to_string(), "voxgrep.server.app".to_string()])
     };
 
     println!("Starting Backend: {} {:?}", python_cmd, final_args);

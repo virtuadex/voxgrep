@@ -1,4 +1,4 @@
-__version__ = "2.3.1"
+__version__ = "3.0.0"
 
 # Core modules (formats)
 from . import formats as formats_module

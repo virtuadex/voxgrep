@@ -26,6 +26,18 @@ VoxGrep supports most common video formats: `.mp4`, `.mov`, `.avi`, `.mkv`, `.we
 
 ---
 
+## 💻 CLI Usage (Interactive Mode)
+
+In addition to the desktop app, VoxGrep provides a powerful interactive CLI. Run it with `voxgrep` (without arguments) to enter the wizard.
+
+### New Features in CLI
+
+- **Download from URL**: You can now download videos directly from YouTube, Vimeo, and other sites within the CLI. Select "Download from URL" in the input selection menu.
+- **Fast Preview**: Use the new **MPV Preview** option to watch search results immediately without waiting for a full export (requires [mpv](https://mpv.io) installed).
+- **Session Summary**: After exporting, see a detailed statistical summary showing time saved, efficiency percentage, and total footage processed.
+
+---
+
 ## 🔍 Searching the Library
 
 Once your videos are analyzed, you can search across your entire library using several methods:

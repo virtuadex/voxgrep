@@ -31,11 +31,8 @@ export function InputSource({
     const unlisteners: (() => void)[] = [];
 
     const setupListeners = async () => {
-      console.log("Setting up drag and drop listeners (Tauri v2)");
-      
       // Handler for drop events - supports both v1 and v2 payload formats
       const handleDrop = (event: any) => {
-        console.log("Tauri drop event:", event);
         setIsDragging(false);
         
         const payload = event.payload;
@@ -50,18 +47,15 @@ export function InputSource({
         }
         
         if (paths.length > 0) {
-          console.log("File dropped (Tauri):", paths[0]);
           setUrl(paths[0]);
         }
       };
 
-      const handleDragEnter = (event: any) => {
-        console.log("Tauri drag enter:", event);
+      const handleDragEnter = () => {
         setIsDragging(true);
       };
 
-      const handleDragLeave = (event: any) => {
-        console.log("Tauri drag leave:", event);
+      const handleDragLeave = () => {
         setIsDragging(false);
       };
 
@@ -70,7 +64,6 @@ export function InputSource({
         unlisteners.push(await listen("tauri://drag-drop", handleDrop));
         unlisteners.push(await listen("tauri://drag-enter", handleDragEnter));
         unlisteners.push(await listen("tauri://drag-leave", handleDragLeave));
-        console.log("✓ Tauri v2 drag events registered");
       } catch (e) {
         console.warn("Failed to register v2 events:", e);
       }
@@ -80,7 +73,6 @@ export function InputSource({
         unlisteners.push(await listen("tauri://file-drop", handleDrop));
         unlisteners.push(await listen("tauri://file-drop-hover", handleDragEnter));
         unlisteners.push(await listen("tauri://file-drop-cancelled", handleDragLeave));
-        console.log("✓ Tauri v1 drag events registered (fallback)");
       } catch (e) {
         console.warn("Failed to register v1 events:", e);
       }
@@ -109,37 +101,27 @@ export function InputSource({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log("Drop event triggered", e);
     setIsDragging(false);
 
     const files = Array.from(e.dataTransfer.files);
-    console.log("Files from dataTransfer:", files);
     
     if (files.length > 0) {
       // In Tauri, the File object often has a 'path' property, 
       // but we need to cast to any to access it or check if it exists.
       const file = files[0] as any;
-      console.log("First file object:", file);
-      console.log("File path property:", file.path);
-      console.log("File name property:", file.name);
       
       if (file.path) {
-        console.log("File dropped (HTML5):", file.path);
         setUrl(file.path);
       } else if (file.name) {
           // Fallback might just be name, which isn't full path, 
           // but logging it helps debug.
-          console.log("File dropped (HTML5 name only):", file.name);
           console.warn("File path not available, only have name. This won't work for processing.");
       }
-    } else {
-      console.log("No files in dataTransfer");
     }
   };
 
   const handleBrowseFiles = async () => {
     try {
-      console.log("Opening file picker...");
       const selected = await open({
         multiple: false,
         filters: [{
@@ -148,17 +130,12 @@ export function InputSource({
         }]
       });
       
-      console.log("File picker result:", selected);
-      
       if (selected) {
         // Handle both string and array returns
         const filePath = typeof selected === 'string' ? selected : selected[0];
         if (filePath) {
-          console.log("File selected:", filePath);
           setUrl(filePath);
         }
-      } else {
-        console.log("No file selected (user cancelled)");
       }
     } catch (error) {
       console.error("File picker error:", error);

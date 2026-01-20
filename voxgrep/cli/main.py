@@ -22,6 +22,7 @@ from ..utils.config import (
     DEFAULT_COMPUTE_TYPE,
     DEFAULT_SEARCH_TYPE
 )
+from ..utils.prefs import load_prefs
 
 # Configure logger with Rich
 logging.basicConfig(
@@ -40,6 +41,8 @@ def create_argument_parser() -> argparse.ArgumentParser:
     Returns:
         Configured ArgumentParser instance
     """
+    prefs = load_prefs()
+    
     parser = argparse.ArgumentParser(
         description='Generate a "supercut" of one or more video files by searching through subtitle tracks.',
         formatter_class=RichHelpFormatter
@@ -84,9 +87,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
     search_group.add_argument(
         "--search-type", "-st",
         dest="searchtype",
-        default=DEFAULT_SEARCH_TYPE,
+        default=prefs.get("search_type", DEFAULT_SEARCH_TYPE),
         choices=["sentence", "fragment", "mash", "semantic"],
-        help=f"Type of search. Default: {DEFAULT_SEARCH_TYPE}",
+        help=f"Type of search. Default: {prefs.get('search_type', DEFAULT_SEARCH_TYPE)}",
     )
     search_group.add_argument(
         "--max-clips", "-m",
@@ -134,20 +137,20 @@ def create_argument_parser() -> argparse.ArgumentParser:
     trans_group.add_argument(
         "--model", "-mo",
         dest="model",
-        default=DEFAULT_WHISPER_MODEL,
-        help=f"Whisper model name. Default: {DEFAULT_WHISPER_MODEL}",
+        default=prefs.get("whisper_model", DEFAULT_WHISPER_MODEL),
+        help=f"Whisper model name. Default: {prefs.get('whisper_model', DEFAULT_WHISPER_MODEL)}",
     )
     trans_group.add_argument(
         "--device", "-dev",
         dest="device",
-        default=DEFAULT_DEVICE,
-        help=f"Device to use for transcription (cpu, cuda, mlx). Default: {DEFAULT_DEVICE}",
+        default=prefs.get("device", DEFAULT_DEVICE),
+        help=f"Device to use for transcription (cpu, cuda, mlx). Default: {prefs.get('device', DEFAULT_DEVICE)}",
     )
     trans_group.add_argument(
         "--compute-type", "-ct",
         dest="compute_type",
-        default=DEFAULT_COMPUTE_TYPE,
-        help=f"Compute type for transcription. Default: {DEFAULT_COMPUTE_TYPE}",
+        default=prefs.get("compute_type", DEFAULT_COMPUTE_TYPE),
+        help=f"Compute type for transcription. Default: {prefs.get('compute_type', DEFAULT_COMPUTE_TYPE)}",
     )
     trans_group.add_argument(
         "--language", "-l",
@@ -164,6 +167,33 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="sphinxtranscribe",
         action="store_true",
         help="Transcribe using pocketsphinx (must be installed)",
+    )
+    trans_group.add_argument(
+        "--beam-size",
+        dest="beam_size",
+        type=int,
+        default=prefs.get("beam_size", 5),
+        help=f"Beam size for transcription decoding (default: {prefs.get('beam_size', 5)})",
+    )
+    trans_group.add_argument(
+        "--best-of",
+        dest="best_of",
+        type=int,
+        default=prefs.get("best_of", 5),
+        help=f"Number of candidates when sampling (default: {prefs.get('best_of', 5)})",
+    )
+    trans_group.add_argument(
+        "--no-vad",
+        dest="vad_filter",
+        action="store_false",
+        default=True,
+        help="Disable Voice Activity Detection (VAD) filter",
+    )
+    trans_group.add_argument(
+        "--normalize-audio",
+        dest="normalize_audio",
+        action="store_true",
+        help="Normalize audio levels before transcription",
     )
 
     # Advanced

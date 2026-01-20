@@ -139,8 +139,12 @@ class EnvironmentDoctor:
         }
         
         results = {}
-        for cmd in commands:
-            results[cmd] = self.check_command_available(cmd)
+        # FFmpeg check
+        results["ffmpeg"] = self.check_command_available("ffmpeg")
+        
+        # MPV check using utility
+        from ..utils import mpv_utils
+        results["mpv"] = mpv_utils.check_mpv_available()
         
         return results
     
@@ -299,6 +303,8 @@ class EnvironmentDoctor:
     
     def _display_summary(self):
         """Display diagnosis summary."""
+        from ..utils import mpv_utils
+        
         if len(self.issues) == 0:
             panel = Panel(
                 Text.assemble(
@@ -339,6 +345,13 @@ class EnvironmentDoctor:
                 summary_text.append("     macOS: brew install ffmpeg\n", style="white")
                 summary_text.append("     Ubuntu: sudo apt install ffmpeg\n", style="white")
                 summary_text.append("     Windows: https://ffmpeg.org/download.html\n\n", style="white")
+            
+            if any("MPV not found" in warning for warning in self.warnings):
+                summary_text.append("  3. Install MPV (Optional but recommended for preview):\n", style="cyan")
+                inst_lines = mpv_utils.get_mpv_install_instructions().split("\n")[1:] # Skip first line "MPV is not installed"
+                for line in inst_lines:
+                     summary_text.append(f"     {line.strip()}\n", style="white")
+                summary_text.append("\n")
             
             if any("Python version" in issue for issue in self.issues):
                 summary_text.append("  3. Upgrade Python to 3.10 or later\n\n", style="cyan")

@@ -1,11 +1,11 @@
 import { useState, useEffect, KeyboardEvent, useMemo, useRef, useCallback } from "react";
-import { SearchMatch, NGramMatch, AppStatus } from "../types";
+import { SearchMatch, NGramMatch, AppStatus, SearchType } from "../types";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Scissors, FolderOpen, Play, BarChart3, Info, Sparkles, X, Hash, Clock, Percent, Activity, Loader2 } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 interface SearchDashboardProps {
-  onSearch: (query: string, type: string, threshold: number) => void;
+  onSearch: (query: string, type: SearchType, threshold: number) => void;
   onExport: (matches: SearchMatch[]) => void;
   onOpenFolder: (path: string) => void;
   onGetNGrams: (n: number) => void;
@@ -30,7 +30,7 @@ export function SearchDashboard({
   progress 
 }: SearchDashboardProps) {
   const [query, setQuery] = useState("");
-  const [searchType, setSearchType] = useState("sentence");
+  const [searchType, setSearchType] = useState<SearchType>("sentence");
   const [threshold, setThreshold] = useState(0.45);
   const [hasSearched, setHasSearched] = useState(false);
   const [searchTime, setSearchTime] = useState<number | null>(null);
@@ -155,10 +155,10 @@ export function SearchDashboard({
           
           <div className="flex flex-wrap items-center gap-4 pr-2">
             <div className="flex p-1 bg-bg-main border border-border-main">
-              {["fragment", "sentence", "semantic"].map(t => (
+              {["fragment", "sentence", "semantic"].map((t) => (
                 <button 
                   key={t}
-                  onClick={() => setSearchType(t)} 
+                  onClick={() => setSearchType(t as SearchType)} 
                   className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all rounded-none ${searchType === t ? "bg-white text-accent-blue shadow-sm border border-border-main" : "text-text-muted hover:text-text-main"}`}
                 >
                   {t}

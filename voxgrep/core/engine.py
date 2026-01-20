@@ -220,7 +220,7 @@ def get_embeddings(videoname: str, transcript: List[dict], force: bool = False) 
     return embeddings
 
 
-def get_ngrams(files: Union[str, List[str]], n: int = 1) -> Iterator[tuple]:
+def get_ngrams(files: Union[str, List[str]], n: int = 1, ignored_words: Optional[List[str]] = None) -> Iterator[tuple]:
     """
     Extract n-grams from transcript files.
     """
@@ -238,7 +238,15 @@ def get_ngrams(files: Union[str, List[str]], n: int = 1) -> Iterator[tuple]:
                 words += re.split(r"[.?!,:\"]+\s*|\s+", line["content"])
 
     ngrams = zip(*[words[i:] for i in range(n)])
-    return ngrams
+    
+    if ignored_words:
+        normalized_ignored = set(w.lower() for w in ignored_words)
+        for g in ngrams:
+            # Filter if ANY word in the n-gram is in the ignored list
+            if not any(w.lower() in normalized_ignored for w in g):
+                yield g
+    else:
+        yield from ngrams
 
 
 def search(

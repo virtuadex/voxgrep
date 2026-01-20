@@ -193,25 +193,47 @@ class VectorStore:
         if not TRANSFORMERS_AVAILABLE:
             raise RuntimeError("Semantic search requires sentence-transformers")
         
-        # Rebuild index if needed
-        if self._index_dirty:
-            self._rebuild_index(session)
-        
-        if self._combined_embeddings is None or len(self._combined_embeddings) == 0:
+        # Validation
+        if not query or not query.strip():
+            logger.warning("Attempted semantic search with empty query")
             return []
+            
+        if len(query.strip()) < 2:
+            logger.warning("Query too short for semantic search")
+            return []
+            
+        if not 0.0 <= threshold <= 1.0:
+            logger.warning(f"Invalid threshold {threshold}, clamping to 0.0-1.0")
+            threshold = max(0.0, min(1.0, threshold))
         
-        # Encode query
-        model = EmbeddingModel.get_instance()
-        query_embedding = model.encode([query], show_progress_bar=False)[0]
-        
-        # Calculate cosine similarity
-        # Normalize embeddings for cosine similarity
-        query_norm = query_embedding / np.linalg.norm(query_embedding)
-        embeddings_norm = self._combined_embeddings / np.linalg.norm(
-            self._combined_embeddings, axis=1, keepdims=True
-        )
-        
-        scores = np.dot(embeddings_norm, query_norm)
+        # Rebuild index if needed
+        try:
+            if self._index_dirty:
+                self._rebuild_index(session)
+            
+            if self._combined_embeddings is None or len(self._combined_embeddings) == 0:
+                logger.debug("No embeddings found for search")
+                return []
+            
+            # Encode query
+            model = EmbeddingModel.get_instance()
+            query_embedding = model.encode([query], show_progress_bar=False)[0]
+            
+            # Calculate cosine similarity
+            # Normalize embeddings for cosine similarity
+            query_norm = query_embedding / np.linalg.norm(query_embedding)
+            embeddings_norm = self._combined_embeddings / np.linalg.norm(
+                self._combined_embeddings, axis=1, keepdims=True
+            )
+            
+            # Replace NaNs (from zero vectors) with 0 to avoid crashes
+            embeddings_norm = np.nan_to_num(embeddings_norm)
+            
+            scores = np.dot(embeddings_norm, query_norm)
+            
+        except Exception as e:
+            logger.error(f"Error during semantic search calculation: {e}")
+            return []
         
         # Filter by threshold and video_ids
         results = []

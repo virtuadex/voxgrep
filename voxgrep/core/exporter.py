@@ -294,40 +294,45 @@ def export_individual_clips(composition: List[dict], outputfile: str, progress_c
     if strategy == "audio" and ext == ".mp4":
         ext = ".mp3"
 
+    results = {"success": 0, "failed": 0, "errors": []}
+    
     try:
         if strategy == "video":
             videofileclips = {f: VideoFileClip(f) for f in all_filenames}
             try:
                 iterable = composition if progress_callback else tqdm(composition, desc="Exporting individual clips", unit="clip")
                 for i, c in enumerate(iterable):
-                    clip_source = videofileclips[c["file"]]
-                    start = max(0, c["start"])
-                    end = min(clip_source.duration, c["end"])
-                    
-                    clip = clip_source.subclipped(start, end)
-                    clip_filename = f"{basename}_{str(i).zfill(5)}{ext}"
-                    
-                    clip_prog_start = i / len(composition)
-                    clip_prog_end = (i + 1) / len(composition)
-                    
-                    write_logger = None
-                    if progress_callback:
-                         write_logger = BridgeLogger(progress_callback, start=clip_prog_start, end=clip_prog_end)
+                    try:
+                        clip_source = videofileclips[c["file"]]
+                        start = max(0, c["start"])
+                        end = min(clip_source.duration, c["end"])
+                        
+                        clip = clip_source.subclipped(start, end)
+                        clip_filename = f"{basename}_{str(i).zfill(5)}{ext}"
+                        
+                        clip_prog_start = i / len(composition)
+                        clip_prog_end = (i + 1) / len(composition)
+                        
+                        write_logger = None
+                        if progress_callback:
+                             write_logger = BridgeLogger(progress_callback, start=clip_prog_start, end=clip_prog_end)
 
-                    clip.write_videofile(
-                        clip_filename,
-                        codec="libx264",
-                        bitrate="8000k",
-                        audio_bitrate="192k",
-                        preset="medium",
-                        remove_temp=True,
-                        audio_codec="aac",
-                        logger=write_logger
-                    )
-                    # No explicit progress update needed after write, BridgeLogger covers it.
-                    # if progress_callback:
-                    #     progress_callback((i + 1) / len(composition))
-                    clip.close()
+                        clip.write_videofile(
+                            clip_filename,
+                            codec="libx264",
+                            bitrate="8000k",
+                            audio_bitrate="192k",
+                            preset="medium",
+                            remove_temp=True,
+                            audio_codec="aac",
+                            logger=write_logger
+                        )
+                        clip.close()
+                        results["success"] += 1
+                    except Exception as e:
+                        logger.error(f"Failed to export clip {i}: {e}")
+                        results["failed"] += 1
+                        results["errors"].append(f"Clip {i}: {e}")
             finally:
                 for f in videofileclips:
                     videofileclips[f].close()
@@ -336,29 +341,35 @@ def export_individual_clips(composition: List[dict], outputfile: str, progress_c
             try:
                 iterable = composition if progress_callback else tqdm(composition, desc="Exporting individual clips", unit="clip")
                 for i, c in enumerate(iterable):
-                    clip_source = audiofileclips[c["file"]]
-                    start = max(0, c["start"])
-                    end = min(clip_source.duration, c["end"])
-                    
-                    clip = clip_source.subclipped(start, end)
-                    clip_filename = f"{basename}_{str(i).zfill(5)}{ext}"
-                    clip_prog_start = i / len(composition)
-                    clip_prog_end = (i + 1) / len(composition)
-                    
-                    write_logger = None
-                    if progress_callback:
-                         write_logger = BridgeLogger(progress_callback, start=clip_prog_start, end=clip_prog_end)
+                    try:
+                        clip_source = audiofileclips[c["file"]]
+                        start = max(0, c["start"])
+                        end = min(clip_source.duration, c["end"])
+                        
+                        clip = clip_source.subclipped(start, end)
+                        clip_filename = f"{basename}_{str(i).zfill(5)}{ext}"
+                        clip_prog_start = i / len(composition)
+                        clip_prog_end = (i + 1) / len(composition)
+                        
+                        write_logger = None
+                        if progress_callback:
+                             write_logger = BridgeLogger(progress_callback, start=clip_prog_start, end=clip_prog_end)
 
-                    clip.write_audiofile(clip_filename, logger=write_logger)
-                    # if progress_callback:
-                    #     progress_callback((i + 1) / len(composition))
-                    clip.close()
+                        clip.write_audiofile(clip_filename, logger=write_logger)
+                        clip.close()
+                        results["success"] += 1
+                    except Exception as e:
+                        logger.error(f"Failed to export clip {i}: {e}")
+                        results["failed"] += 1
+                        results["errors"].append(f"Clip {i}: {e}")
             finally:
                 for f in audiofileclips:
                     audiofileclips[f].close()
     except Exception as e:
-        logger.error(f"Individual export failed: {e}")
-        raise ExportFailedError(f"Failed to export individual clips: {e}") from e
+        logger.error(f"Batch setup failed: {e}")
+        raise ExportFailedError(f"Failed to start export: {e}") from e
+    
+    return results
 
 
 def export_m3u(composition: List[dict], outputfile: str):

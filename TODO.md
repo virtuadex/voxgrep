@@ -12,7 +12,9 @@ This list tracks the planned improvements and future features for the VoxGrep pr
 
 ## 🧠 Smart Features & AI
 
-- [ ] **Smart Search Suggestions**: Show top N-grams after transcription and allow one-click supercut generation.
+- [x] **Smart Search Suggestions**: Show top N-grams after transcription and allow one-click supercut generation.
+  - [x] Interactive N-gram selection.
+  - [x] Stop words filtering.
 - [ ] **Topic Clustering**: Use embeddings to suggest cuts based on themes/concepts.
 - [ ] **Semantic Search Robustness**: Fix edge-case crashes in semantic search (e.g., empty queries).
 
@@ -27,13 +29,14 @@ This list tracks the planned improvements and future features for the VoxGrep pr
 
 ## 🛠️ UX & Reliability
 
-- [ ] **Configuration Persistence**: Save user preferences (Device, Model selection) to avoid repetitive choices.
+- [x] **Configuration Persistence**: Save user preferences (Device, Model selection) to avoid repetitive choices.
 - [ ] **Session Summary**: Show post-task statistics (duration saved, clips cut, efficiency).
 - [ ] **Batch Error Recovery**: Continue processing remaining files if one fails in a batch.
-- [ ] **Dry Run Mode**: Preview clip timestamps and final duration without rendering.
+- [x] **Dry Run Mode**: Preview clip timestamps and final duration without rendering (implemented as Demo Mode).
 - [ ] **MPV Preview Robustness**: Better error handling and dependency checks for MPV.
 
 ## 📦 Maintenance
 
 - [x] Standardize Python environment across all installation paths.
 - [x] Improve automated test coverage for CLI interactive modes.
+- [x] **Server Refactoring**: Split monolithic app.py into modular routers.

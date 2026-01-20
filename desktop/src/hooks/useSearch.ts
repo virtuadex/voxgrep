@@ -1,11 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { searchMedia, exportSupercut, getNGrams } from "../api";
-import { SearchMatch, VideoFile } from "../types";
+import { SearchMatch, VideoFile, SearchType } from "../types";
 
 export function useSearch(selectedVideo: VideoFile | null, ngramN: number) {
   const searchMutation = useMutation({
-    mutationFn: ({ query, type, threshold }: { query: string; type: string; threshold: number }) => 
-      searchMedia(query, type as any, threshold),
+    mutationFn: ({ query, type, threshold }: { query: string; type: SearchType; threshold: number }) => 
+      searchMedia(query, type, threshold),
   });
 
   const ngramsQuery = useQuery({

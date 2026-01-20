@@ -27,6 +27,7 @@ from ..utils.exceptions import (
     TranscriptionFailedError,
     FileNotFoundError as VoxGrepFileNotFoundError
 )
+from ..utils.audio import normalize_audio as norm_audio, get_normalized_cache_path, should_normalize_audio
 
 logger = setup_logger(__name__)
 
@@ -218,7 +219,8 @@ def transcribe_mlx(
     videofile: str, 
     model_name: str = DEFAULT_MLX_MODEL, 
     language: Optional[str] = None, 
-    prompt: Optional[str] = None
+    prompt: Optional[str] = None,
+    normalize_audio: bool = False
 ) -> List[dict]:
     """
     Transcribes a video file using mlx-whisper (Apple Silicon GPU)
@@ -231,10 +233,28 @@ def transcribe_mlx(
 
     logger.info(f"Transcribing {videofile} using mlx-whisper ({model_name})")
 
+    # Audio normalization pre-processing
+    actual_input_file = videofile
+    if normalize_audio:
+        try:
+            cache_path = get_normalized_cache_path(videofile)
+            
+            if should_normalize_audio(videofile):
+                logger.info("Normalizing audio levels for improved transcription...")
+                actual_input_file = norm_audio(videofile, output_file=cache_path)
+                logger.info(f"Using normalized audio: {actual_input_file}")
+            else:
+                actual_input_file = cache_path
+                logger.info(f"Using cached normalized audio: {actual_input_file}")
+                
+        except Exception as e:
+            logger.warning(f"Audio normalization failed: {e}. Continuing with original audio.")
+            actual_input_file = videofile
+
     try:
         # mlx_whisper.transcribe returns "text" and "segments" in a dict
         result = mlx_whisper.transcribe(
-            videofile,
+            actual_input_file,
             path_or_hf_repo=model_name,
             word_timestamps=True,
             language=language,
@@ -395,7 +415,7 @@ def transcribe(
     
     # Check backend selection and transcribe
     if device == "mlx":
-        out = transcribe_mlx(videofile, _model, language=language, prompt=prompt)
+        out = transcribe_mlx(videofile, _model, language=language, prompt=prompt, normalize_audio=normalize_audio)
     else:
         out = transcribe_whisper(
             videofile, 

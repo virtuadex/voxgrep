@@ -10,7 +10,8 @@ from typing import List, Optional
 
 import questionary
 
-from .ui import console
+from .ui import console, print_session_summary
+
 from .workflows import (
     select_input_files, check_transcripts, configure_transcription,
     settings_menu, post_export_menu, search_settings_menu,
@@ -18,7 +19,12 @@ from .workflows import (
 )
 from .commands import run_voxgrep_search, execute_args
 from .ngrams import interactive_ngrams_workflow
-from ..utils.config import DEFAULT_WHISPER_MODEL, DEFAULT_DEVICE, DEFAULT_SEARCH_TYPE
+from ..utils.config import (
+    DEFAULT_WHISPER_MODEL, 
+    DEFAULT_DEVICE, 
+    DEFAULT_SEARCH_TYPE, 
+    DEFAULT_IGNORED_WORDS
+)
 from ..utils.prefs import load_prefs, save_prefs
 
 
@@ -45,11 +51,7 @@ def create_default_args(input_files: List[str], prefs: dict) -> Namespace:
     args.exact_match = False
     
     # Ignored words settings
-    args.ignored_words = prefs.get("ignored_words", [
-        "a", "o", "as", "os", "e", "é", "de", "do", "da", "dos", "das",
-        "em", "no", "na", "nos", "nas", "que", "para", "por", "com",
-        "um", "uma", "uns", "umas", "não", "se"
-    ])
+    args.ignored_words = prefs.get("ignored_words", DEFAULT_IGNORED_WORDS)
     args.use_ignored_words = prefs.get("use_ignored_words", True)
     
     # Transcription settings
@@ -119,7 +121,7 @@ def handle_search_workflow(args: Namespace) -> bool:
 
         if action == "preview":
             console.print("\n[bold yellow]Generating Preview...[/bold yellow]")
-            run_voxgrep_search(
+            result = run_voxgrep_search(
                 files=args.inputfile,
                 query=args.search,
                 search_type=args.searchtype,
@@ -134,7 +136,10 @@ def handle_search_workflow(args: Namespace) -> bool:
                 preview=True,
                 exact_match=args.exact_match
             )
-            console.print()
+            
+            if isinstance(result, dict):
+                print_session_summary(result)
+            
             continue
 
         if action == "settings":
@@ -162,6 +167,9 @@ def handle_search_workflow(args: Namespace) -> bool:
                 preview=False,
                 exact_match=args.exact_match
             )
+            
+            if isinstance(result, dict) and result.get("success"):
+                print_session_summary(result)
             
             # Post-export menu
             while result:
@@ -303,8 +311,8 @@ def interactive_mode() -> None:
             console.print("[dim]Returning to menu...[/dim]\n")
             continue
         
-        # Save preferences
-        save_prefs({
+        # Save preferences (update existing prefs to preserve other keys)
+        prefs.update({
             "device": args.device,
             "whisper_model": args.model,
             "search_type": args.searchtype,
@@ -313,3 +321,4 @@ def interactive_mode() -> None:
             "ignored_words": args.ignored_words,
             "use_ignored_words": args.use_ignored_words
         })
+        save_prefs(prefs)

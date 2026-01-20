@@ -10,7 +10,8 @@ from typing import List, Set, Tuple, Optional
 
 import questionary
 
-from .ui import console
+from .ui import console, print_session_summary
+
 from .workflows import get_output_filename, post_export_menu
 from .commands import calculate_ngrams, run_voxgrep_search
 from ..utils.config import DEFAULT_SEARCH_TYPE
@@ -201,7 +202,7 @@ def ngram_action_phase(args: Namespace, selected_ngrams: List[str]) -> bool:
         search_args.preview = False
         search_args.outputfile = "ngram_supercut.mp4"
         
-        run_voxgrep_search(
+        result = run_voxgrep_search(
             files=search_args.inputfile,
             query=search_args.search,
             search_type=search_args.searchtype,
@@ -216,6 +217,8 @@ def ngram_action_phase(args: Namespace, selected_ngrams: List[str]) -> bool:
             preview=False,
             exact_match=search_args.exact_match
         )
+        if isinstance(result, dict):
+            print_session_summary(result)
     
     # Reset demo flag
     search_args.demo = False
@@ -271,7 +274,7 @@ def ngram_action_phase(args: Namespace, selected_ngrams: List[str]) -> bool:
         if action == "preview":
             search_args.preview = True
             search_args.outputfile = "preview_temp.mp4"
-            run_voxgrep_search(
+            result = run_voxgrep_search(
                 files=search_args.inputfile,
                 query=search_args.search,
                 search_type=search_args.searchtype,
@@ -286,6 +289,9 @@ def ngram_action_phase(args: Namespace, selected_ngrams: List[str]) -> bool:
                 preview=True,
                 exact_match=search_args.exact_match
             )
+            if isinstance(result, dict):
+                print_session_summary(result)
+                
             search_args.preview = False
             continue
             
@@ -308,6 +314,9 @@ def ngram_action_phase(args: Namespace, selected_ngrams: List[str]) -> bool:
                 preview=False,
                 exact_match=search_args.exact_match
             )
+            
+            if isinstance(result, dict) and result.get("success"):
+                print_session_summary(result)
             
             if result:
                 post_act = post_export_menu(search_args.outputfile)

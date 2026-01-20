@@ -78,6 +78,100 @@ def print_success_panel(output_path: str) -> None:
     console.print(panel)
 
 
+def format_duration(seconds: float) -> str:
+    """Format seconds into a human-readable duration string."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    elif seconds < 3600:
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins}m {secs}s"
+    else:
+        hours = int(seconds // 3600)
+        mins = int((seconds % 3600) // 60)
+        return f"{hours}h {mins}m"
+
+
+def print_session_summary(stats: dict) -> None:
+    """
+    Print a detailed session summary with statistics.
+    
+    Args:
+        stats: Dictionary containing session statistics:
+            - clips_count: Number of clips found
+            - supercut_duration: Total duration of supercut
+            - original_duration: Total duration of source files
+            - time_saved: Time difference (original - supercut)
+            - efficiency_percent: Percentage of time saved
+            - search_query: The search query used
+            - output_file: Path to output file (if any)
+            - mode: 'export', 'preview', or 'demo'
+    """
+    if not stats or not stats.get("success"):
+        return
+    
+    mode = stats.get("mode", "export")
+    
+    # Build the summary table
+    table = Table(
+        title="📊 Session Summary",
+        box=box.ROUNDED,
+        border_style="green" if mode == "export" else "cyan",
+        show_header=False,
+        padding=(0, 1)
+    )
+    table.add_column("Metric", style="bold cyan", width=20)
+    table.add_column("Value", style="bold white")
+    
+    # Search query
+    query = stats.get("search_query", "")
+    if query:
+        table.add_row("🔍 Search Query", query[:50] + "..." if len(query) > 50 else query)
+    
+    # Clips count
+    clips_count = stats.get("clips_count", 0)
+    table.add_row("📹 Clips Found", str(clips_count))
+    
+    # Supercut duration
+    supercut_dur = stats.get("supercut_duration", 0)
+    table.add_row("⏱️ Supercut Duration", format_duration(supercut_dur))
+    
+    # Original duration (if available)
+    original_dur = stats.get("original_duration", 0)
+    if original_dur > 0:
+        table.add_row("📼 Original Footage", format_duration(original_dur))
+        
+        # Time saved
+        time_saved = stats.get("time_saved", 0)
+        if time_saved > 0:
+            table.add_row("💾 Time Saved", f"[green]{format_duration(time_saved)}[/green]")
+        
+        # Efficiency
+        efficiency = stats.get("efficiency_percent", 0)
+        if efficiency > 0:
+            efficiency_style = "green" if efficiency > 50 else "yellow"
+            table.add_row("📈 Efficiency", f"[{efficiency_style}]{efficiency:.1f}%[/{efficiency_style}]")
+    
+    # Output file
+    output_file = stats.get("output_file")
+    if output_file and mode == "export":
+        table.add_row("📁 Output File", str(Path(output_file).name))
+    
+    console.print()
+    console.print(table)
+    
+    # Print mode-specific message
+    if mode == "export" and output_file:
+        console.print(f"\n[bold green]✓ Export Complete![/bold green] Saved to: [cyan]{output_file}[/cyan]")
+    elif mode == "preview":
+        console.print("\n[bold cyan]✓ Preview Complete![/bold cyan]")
+    elif mode == "demo":
+        console.print("\n[dim]This was a dry run. No files were created.[/dim]")
+    
+    console.print()
+
+
+
 def open_file(filepath: str) -> None:
     """
     Open a file with the default system application.

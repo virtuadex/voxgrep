@@ -5,7 +5,7 @@ import { Header } from "./components/Header";
 import { InputSource } from "./components/InputSource";
 import { Library } from "./components/Library";
 import { SearchDashboard } from "./components/SearchDashboard";
-import { VideoFile, AppStatus, SearchMatch } from "./types";
+import { VideoFile, AppStatus, SearchMatch, SearchType } from "./types";
 import { downloadVideo, addLocalFile, openFolder } from "./api";
 import { useLibrary } from "./hooks/useLibrary";
 import { useSearch } from "./hooks/useSearch";
@@ -66,7 +66,7 @@ function App() {
     setSelectedVideo(prev => prev?.path === video.path ? null : video);
   };
 
-  const handleSearch = useCallback((query: string, type: string, threshold: number) => {
+  const handleSearch = useCallback((query: string, type: SearchType, threshold: number) => {
     if (query.length > 0) {
       search({ query, type, threshold });
     }
@@ -146,16 +146,6 @@ function App() {
           />
         </div>
       </div>
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: var(--color-border-strong);
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: var(--color-accent-blue);
-        }
-      `}</style>
     </div>
   );
 }

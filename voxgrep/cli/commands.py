@@ -20,6 +20,7 @@ from ..formats import sphinx
 from ..core import logic as voxgrep
 from ..core.engine import get_ngrams
 from ..utils.prefs import load_prefs
+from ..utils.config import DEFAULT_IGNORED_WORDS
 
 
 def run_transcription_sphinx(input_files: List[str]) -> None:
@@ -155,20 +156,24 @@ def run_transcription_whisper(
                             # Print the text above the progress bar (scrolling ticker)
                             progress.console.print(f"[dim grey50]{text}[/dim grey50]")
                     
-                    transcribe.transcribe(
-                        f, 
-                        model_name=model, 
-                        prompt=prompt, 
-                        language=language, 
-                        device=device, 
-                        compute_type=compute_type,
-                        progress_callback=update_progress,
-                        on_existing_transcript=ask_about_existing_transcript,
-                        beam_size=beam_size,
-                        best_of=best_of,
-                        vad_filter=vad_filter,
-                        normalize_audio=normalize_audio
-                    )
+                    try:
+                        transcribe.transcribe(
+                            f, 
+                            model_name=model, 
+                            prompt=prompt, 
+                            language=language, 
+                            device=device, 
+                            compute_type=compute_type,
+                            progress_callback=update_progress,
+                            on_existing_transcript=ask_about_existing_transcript,
+                            beam_size=beam_size,
+                            best_of=best_of,
+                            vad_filter=vad_filter,
+                            normalize_audio=normalize_audio
+                        )
+                    except Exception as e:
+                        console.print(f"\n[red]✗ Failed to transcribe {filename}: {e}[/red]")
+                        
                     progress.update(task, completed=100)
         except KeyboardInterrupt:
             console.print("\n[yellow]⚠ Transcription cancelled by user. Partial results have been saved.[/yellow]")
@@ -194,33 +199,19 @@ def calculate_ngrams(
         Tuple of (most_common_ngrams, was_filtered)
     """
     with console.status(f"[bold green]Calculating {n}-grams...", spinner="dots"):
-        grams = get_ngrams(input_files, n)
-        
         # Get ignored words from prefs if not provided
         if ignored_words is None:
             prefs = load_prefs()
-            ignored_words = prefs.get("ignored_words", [
-                "a", "o", "as", "os", "e", "é", "de", "do", "da", "dos", "das", 
-                "em", "no", "na", "nos", "nas", "que", "para", "por", "com", 
-                "um", "uma", "uns", "umas", "não", "se"
-            ])
+            ignored_words = prefs.get("ignored_words", DEFAULT_IGNORED_WORDS)
             use_filter = prefs.get("use_ignored_words", True)
         
-        filtered = False
-        if use_filter and ignored_words:
-            normalized_ignored = set(w.lower() for w in ignored_words)
-            filtered_grams = []
-            
-            for g in grams:
-                # Filter if ANY word in the n-gram is in the ignored list
-                if any(w.lower() in normalized_ignored for w in g):
-                    continue
-                filtered_grams.append(g)
-            
-            most_common = Counter(filtered_grams).most_common(100)
-            filtered = True
-        else:
-            most_common = Counter(grams).most_common(100)
+        filter_list = ignored_words if use_filter else None
+        
+        # Pass filter list to core engine
+        grams = get_ngrams(input_files, n, ignored_words=filter_list)
+        
+        most_common = Counter(grams).most_common(100)
+        filtered = bool(filter_list)
         
         return most_common, filtered
 
@@ -315,7 +306,9 @@ def run_voxgrep_search(
                 progress_callback=progress_callback or update_progress
             )
             
-            if result:
+            if result and isinstance(result, bool):
+                # Only show simple success if result is just True (legacy)
+                # If it's a dict, the caller handles displaying the stats
                 print_success_panel(output)
             
             return result
@@ -349,10 +342,10 @@ def execute_args(args: Namespace) -> bool:
             args.compute_type,
             args.language,
             args.prompt,
-            getattr(args, 'beam_size', 5),
-            getattr(args, 'best_of', 5),
-            getattr(args, 'vad_filter', True),
-            getattr(args, 'normalize_audio', False)
+            args.beam_size,
+            args.best_of,
+            args.vad_filter,
+            args.normalize_audio
         )
         if not args.search and args.ngrams == 0:
             return True

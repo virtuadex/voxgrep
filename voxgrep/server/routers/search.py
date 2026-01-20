@@ -24,6 +24,9 @@ def search(
     """
     Searches across all videos in the library.
     """
+    if not query or not query.strip():
+        raise HTTPException(status_code=400, detail="Search query cannot be empty")
+        
     # Parse video_ids if provided
     target_video_ids = None
     if video_ids:

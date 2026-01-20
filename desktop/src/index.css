@@ -91,3 +91,20 @@ body::after {
   text-transform: uppercase;
   font-size: 0.75rem;
 }
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar { 
+  width: 4px; 
+}
+
+.custom-scrollbar::-webkit-scrollbar-track { 
+  background: transparent; 
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-blue);
+}

@@ -42,6 +42,12 @@ DEFAULT_SEARCH_TYPE = "sentence"
 DEFAULT_SEMANTIC_THRESHOLD = 0.45
 DEFAULT_SEMANTIC_MODEL = "all-MiniLM-L6-v2"
 
+DEFAULT_IGNORED_WORDS = [
+    "a", "o", "as", "os", "e", "é", "de", "do", "da", "dos", "das", 
+    "em", "no", "na", "nos", "nas", "que", "para", "por", "com", 
+    "um", "uma", "uns", "umas", "não", "se"
+]
+
 
 # ============================================================================
 # Server Configuration
