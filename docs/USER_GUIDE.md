@@ -6,6 +6,10 @@ This guide covers how to use VoxGrep's features, with a focus on the Desktop App
 
 VoxGrep can process both online videos (via URL) and local files from your system.
 
+### Adding Online Videos (YouTube)
+
+You can paste a URL from **YouTube** or other supported video sites directly into the input field. VoxGrep uses **yt-dlp** to automatically download the video and any available subtitles before analysis.
+
 ### Adding Local Files
 
 There are three ways to add local video files:
@@ -61,6 +65,37 @@ If you are accessing the app via `localhost:1420` in a web browser, native featu
 - Check if **GPU Acceleration** is enabled in the app settings.
 - On Mac, ensure the **MLX** backend is being used for optimal performance.
 - For large libraries, the first semantic search may be slow while the vector model loads into RAM.
+
+### Cancelling Transcription
+
+If you notice the transcription quality is poor or you want to stop the process:
+
+- Press **Ctrl+C** (or **Cmd+C** on Mac) at any time during transcription.
+- VoxGrep will gracefully stop and **save all partial results** processed up to that point.
+- You can then restart with different settings (e.g., different model, language, or device).
+- The partial transcript will be saved as a `.json` file next to your video.
+
+### Changing Transcription Models
+
+VoxGrep automatically tracks which model was used to create each transcript. If you try to transcribe a video that already has a transcript but with different settings (e.g., switching from `tiny` to `large-v3`, or from `cpu` to `cuda`), you'll be prompted:
+
+```
+⚠ Found existing transcript created with different settings:
+  Existing: tiny on cpu
+  Requested: large-v3 on cuda
+
+? What would you like to do?
+  ❯ Use existing transcript (faster)
+    Regenerate with new settings (recommended for quality)
+    Cancel
+```
+
+**Recommendations:**
+- Choose **"Use existing"** if you just want to search quickly and don't care about perfect accuracy
+- Choose **"Regenerate"** if you need better quality (e.g., upgrading from `tiny` to `large-v3`)
+- Choose **"Cancel"** if you want to check your settings first
+
+VoxGrep stores model metadata in `.transcript_meta.json` files alongside your transcripts.
 
 ### Missing transcription models
 

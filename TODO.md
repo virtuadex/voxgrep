@@ -8,7 +8,7 @@ This list tracks the planned improvements and future features for the VoxGrep pr
 - [x] **Interactive Mode**: Add an interactive wizard using `questionary` for guided task configuration.
 - [x] **Navigable File Selection**: Use checkbox menus for selecting local media files.
 - [x] **Real-time Transcription Progress**: Wire up proper progress callbacks for Whisper (CPU/CUDA/MLX).
-- [ ] **In-Terminal Subtitle Preview**: Show a scrolling "Ticker" or panel of detected text during transcription.
+- [x] **In-Terminal Subtitle Preview**: Show a scrolling "Ticker" or panel of detected text during transcription.
 
 ## 🧠 Smart Features & AI
 

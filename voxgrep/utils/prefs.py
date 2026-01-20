@@ -11,6 +11,12 @@ DEFAULT_PREFS = {
     "search_type": "sentence",
     "preview": False,
     "demo": False,
+    "high_accuracy_mode": False,
+    "beam_size": 5,
+    "best_of": 5,
+    "vad_filter": True,
+    "normalize_audio": False,
+    "project_vocabulary": [],  # Common terms/names for this project
 }
 
 def _get_prefs_file():

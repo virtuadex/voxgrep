@@ -10,7 +10,34 @@ from ..utils.config import BATCH_SIZE
 from ..utils.helpers import setup_logger, get_media_type
 from ..utils.exceptions import ExportError, InvalidOutputFormatError, ExportFailedError
 
+try:
+    from proglog import ProgressBarLogger
+except ImportError:
+    # Fallback if proglog is missing, though moviepy depends on it
+    ProgressBarLogger = object
+
 logger = setup_logger(__name__)
+
+
+class BridgeLogger(ProgressBarLogger):
+    """
+    Bridges MoviePy/Proglog progress updates to a custom callback.
+    """
+    def __init__(self, progress_callback, start=0.0, end=1.0):
+        super().__init__(init_state=None, bars=None, ignored_bars=None,
+                         logged_bars='all', min_time_interval=0, ignore_bars_under=0)
+        self.progress_callback = progress_callback
+        self.start = start
+        self.range = end - start
+
+    def bars_callback(self, bar, attr, value, old_value=None):
+        if bar == 't' and attr == 'index':
+             total = self.bars[bar]['total']
+             if total > 0:
+                 frac = value / total
+                 current_overall = self.start + (frac * self.range)
+                 if self.progress_callback:
+                     self.progress_callback(current_overall)
 
 
 def get_input_type(composition: List[dict]) -> str:
@@ -81,21 +108,25 @@ def create_supercut(composition: List[dict], outputfile: str, progress_callback:
             videofileclips = {f: VideoFileClip(f) for f in all_filenames}
             try:
                 cut_clips = []
-                for i, c in enumerate(tqdm(composition, desc="Creating video clips", unit="clip")):
+                iterable = composition if progress_callback else tqdm(composition, desc="Creating video clips", unit="clip")
+                for i, c in enumerate(iterable):
                     clip_source = videofileclips[c["file"]]
                     start = max(0, c["start"])
                     end = min(clip_source.duration, c["end"])
                     
                     cut_clips.append(clip_source.subclipped(start, end))
                     if progress_callback:
-                        progress_callback((i + 1) / len(composition) * 0.5)
+                        progress_callback((i + 1) / len(composition) * 0.05)
 
                 logger.info("[+] Concatenating video clips.")
                 final_clip = concatenate_videoclips(cut_clips, method="compose")
 
                 logger.info("[+] Writing video output.")
+                
+                # Use BridgeLogger for the remaining 95%
+                write_logger = None
                 if progress_callback:
-                    progress_callback(0.9)
+                     write_logger = BridgeLogger(progress_callback, start=0.05, end=1.0)
                     
                 final_clip.write_videofile(
                     outputfile,
@@ -106,7 +137,7 @@ def create_supercut(composition: List[dict], outputfile: str, progress_callback:
                     temp_audiofile=f"{outputfile}_temp-audio{time.time()}.m4a",
                     remove_temp=True,
                     audio_codec="aac",
-                    logger=None
+                    logger=write_logger
                 )
                 
                 final_clip.close()
@@ -121,14 +152,15 @@ def create_supercut(composition: List[dict], outputfile: str, progress_callback:
             audiofileclips = {f: AudioFileClip(f) for f in all_filenames}
             try:
                 cut_clips = []
-                for i, c in enumerate(tqdm(composition, desc="Creating audio clips", unit="clip")):
+                iterable = composition if progress_callback else tqdm(composition, desc="Creating audio clips", unit="clip")
+                for i, c in enumerate(iterable):
                     clip_source = audiofileclips[c["file"]]
                     start = max(0, c["start"])
                     end = min(clip_source.duration, c["end"])
                     
                     cut_clips.append(clip_source.subclipped(start, end))
                     if progress_callback:
-                        progress_callback((i + 1) / len(composition) * 0.5)
+                        progress_callback((i + 1) / len(composition) * 0.05)
 
                 logger.info("[+] Concatenating audio clips.")
                 final_clip = concatenate_audioclips(cut_clips)
@@ -138,10 +170,13 @@ def create_supercut(composition: List[dict], outputfile: str, progress_callback:
                     logger.info(f"[!] Changing output extension to .mp3: {outputfile}")
 
                 logger.info(f"[+] Writing audio output: {outputfile}")
+                
+                # Use BridgeLogger for the remaining 95%
+                write_logger = None
                 if progress_callback:
-                    progress_callback(0.9)
+                     write_logger = BridgeLogger(progress_callback, start=0.05, end=1.0)
                     
-                final_clip.write_audiofile(outputfile, logger=None)
+                final_clip.write_audiofile(outputfile, logger=write_logger)
                 
                 final_clip.close()
                 for clip in cut_clips:
@@ -172,7 +207,9 @@ def create_supercut_in_batches(composition: List[dict], outputfile: str, progres
     if strategy == "audio" and outputfile.endswith(".mp4"):
         outputfile = outputfile.replace(".mp4", ".mp3")
 
-    pbar = tqdm(total=num_batches, desc="Processing batches", unit="batch")
+    pbar = None
+    if not progress_callback:
+        pbar = tqdm(total=num_batches, desc="Processing batches", unit="batch")
 
     try:
         for batch_idx in range(num_batches):
@@ -183,23 +220,31 @@ def create_supercut_in_batches(composition: List[dict], outputfile: str, progres
             
             def batch_progress(p):
                 if progress_callback:
+                    # Scale batch progress to 80% of total
                     overall_p = (batch_idx + p) / num_batches * 0.8
                     progress_callback(overall_p)
             
             create_supercut(composition[start_idx:end_idx], batch_filename, progress_callback=batch_progress)
             batch_files.append(batch_filename)
             gc.collect()
-            pbar.update(1)
+            if pbar:
+                pbar.update(1)
             
-        pbar.close()
+        if pbar:
+            pbar.close()
 
         if progress_callback:
-            progress_callback(0.85)
+            progress_callback(0.8)
 
         logger.info("[+] Concatenating all batches.")
         if strategy == "video":
             clips = [VideoFileClip(f) for f in batch_files]
             final = concatenate_videoclips(clips, method="compose")
+            
+            write_logger = None
+            if progress_callback:
+                 write_logger = BridgeLogger(progress_callback, start=0.8, end=1.0)
+
             final.write_videofile(
                 outputfile,
                 codec="libx264",
@@ -209,7 +254,7 @@ def create_supercut_in_batches(composition: List[dict], outputfile: str, progres
                 temp_audiofile=f"{outputfile}_final_temp-audio.m4a",
                 remove_temp=True,
                 audio_codec="aac",
-                logger=None
+                logger=write_logger
             )
             final.close()
             for c in clips:
@@ -217,7 +262,12 @@ def create_supercut_in_batches(composition: List[dict], outputfile: str, progres
         else:
             clips = [AudioFileClip(f) for f in batch_files]
             final = concatenate_audioclips(clips)
-            final.write_audiofile(outputfile, logger=None)
+            
+            write_logger = None
+            if progress_callback:
+                 write_logger = BridgeLogger(progress_callback, start=0.8, end=1.0)
+                 
+            final.write_audiofile(outputfile, logger=write_logger)
             final.close()
             for c in clips:
                 c.close()
@@ -235,7 +285,7 @@ def create_supercut_in_batches(composition: List[dict], outputfile: str, progres
         cleanup_log_files(outputfile)
 
 
-def export_individual_clips(composition: List[dict], outputfile: str):
+def export_individual_clips(composition: List[dict], outputfile: str, progress_callback: Optional[Callable[[float], None]] = None):
     """Exports each clip in the composition as a separate file."""
     strategy = plan_output_strategy(composition, outputfile)
     all_filenames = set([c["file"] for c in composition])
@@ -248,7 +298,8 @@ def export_individual_clips(composition: List[dict], outputfile: str):
         if strategy == "video":
             videofileclips = {f: VideoFileClip(f) for f in all_filenames}
             try:
-                for i, c in enumerate(tqdm(composition, desc="Exporting individual clips", unit="clip")):
+                iterable = composition if progress_callback else tqdm(composition, desc="Exporting individual clips", unit="clip")
+                for i, c in enumerate(iterable):
                     clip_source = videofileclips[c["file"]]
                     start = max(0, c["start"])
                     end = min(clip_source.duration, c["end"])
@@ -256,6 +307,13 @@ def export_individual_clips(composition: List[dict], outputfile: str):
                     clip = clip_source.subclipped(start, end)
                     clip_filename = f"{basename}_{str(i).zfill(5)}{ext}"
                     
+                    clip_prog_start = i / len(composition)
+                    clip_prog_end = (i + 1) / len(composition)
+                    
+                    write_logger = None
+                    if progress_callback:
+                         write_logger = BridgeLogger(progress_callback, start=clip_prog_start, end=clip_prog_end)
+
                     clip.write_videofile(
                         clip_filename,
                         codec="libx264",
@@ -264,8 +322,11 @@ def export_individual_clips(composition: List[dict], outputfile: str):
                         preset="medium",
                         remove_temp=True,
                         audio_codec="aac",
-                        logger=None
+                        logger=write_logger
                     )
+                    # No explicit progress update needed after write, BridgeLogger covers it.
+                    # if progress_callback:
+                    #     progress_callback((i + 1) / len(composition))
                     clip.close()
             finally:
                 for f in videofileclips:
@@ -273,14 +334,24 @@ def export_individual_clips(composition: List[dict], outputfile: str):
         else:
             audiofileclips = {f: AudioFileClip(f) for f in all_filenames}
             try:
-                for i, c in enumerate(tqdm(composition, desc="Exporting individual clips", unit="clip")):
+                iterable = composition if progress_callback else tqdm(composition, desc="Exporting individual clips", unit="clip")
+                for i, c in enumerate(iterable):
                     clip_source = audiofileclips[c["file"]]
                     start = max(0, c["start"])
                     end = min(clip_source.duration, c["end"])
                     
                     clip = clip_source.subclipped(start, end)
                     clip_filename = f"{basename}_{str(i).zfill(5)}{ext}"
-                    clip.write_audiofile(clip_filename, logger=None)
+                    clip_prog_start = i / len(composition)
+                    clip_prog_end = (i + 1) / len(composition)
+                    
+                    write_logger = None
+                    if progress_callback:
+                         write_logger = BridgeLogger(progress_callback, start=clip_prog_start, end=clip_prog_end)
+
+                    clip.write_audiofile(clip_filename, logger=write_logger)
+                    # if progress_callback:
+                    #     progress_callback((i + 1) / len(composition))
                     clip.close()
             finally:
                 for f in audiofileclips:

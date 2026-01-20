@@ -2,7 +2,7 @@ import random
 import subprocess
 import os
 import sys
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Callable
 
 from rich.console import Console
 from rich.table import Table
@@ -82,6 +82,7 @@ def voxgrep(
     preview: bool = False,
     exact_match: bool = False,
     console: Optional[Console] = None,
+    progress_callback: Optional[Callable[[float], None]] = None,
 ) -> bool:
     """
     Main entry point for creating a supercut based on a search query.
@@ -187,7 +188,7 @@ def voxgrep(
 
     # Export Logic
     if export_clips:
-        exporter.export_individual_clips(segments, output)
+        exporter.export_individual_clips(segments, output, progress_callback=progress_callback)
     elif output.endswith(".m3u"):
         exporter.export_m3u(segments, output)
     elif output.endswith(".mpv.edl"):
@@ -197,9 +198,9 @@ def voxgrep(
     else:
         # Create full supercut
         if len(segments) > BATCH_SIZE:
-            exporter.create_supercut_in_batches(segments, output)
+            exporter.create_supercut_in_batches(segments, output, progress_callback=progress_callback)
         else:
-            exporter.create_supercut(segments, output)
+            exporter.create_supercut(segments, output, progress_callback=progress_callback)
 
     # Write WebVTT if requested
     if write_vtt:

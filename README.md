@@ -11,6 +11,7 @@
 
 Search for phrases, patterns, or even semantic concepts across your video library and instantly export a compilation of every matching moment.
 
+- **YouTube Support:** Search and download directly from YouTube via `yt-dlp`.
 - **Regex Search:** Find exact phrases or complex linguistic patterns.
 - **Semantic Search:** Search by concept using AI embeddings.
 - **Auto-Transcription:** Local AI-powered transcription via OpenAI Whisper (optimized for MLX/GPU).
@@ -60,4 +61,4 @@ VoxGrep features a premium desktop interface built with **Tauri**, **React**, an
 
 ## ✍️ Credits
 
-Maintained by **virtuadex**, originally created by [Sam Lavigne](https://lav.io). Built with [MoviePy](https://zulko.github.io/moviepy/) and [OpenAI Whisper](https://github.com/openai/whisper). Special thanks to [Charlie Macquarie](https://charliemacquarie.com).
+Maintained by **virtuadex**, originally created by [Sam Lavigne](https://lav.io). Built with [MoviePy](https://zulko.github.io/moviepy/), [OpenAI Whisper](https://github.com/openai/whisper), and [yt-dlp](https://github.com/yt-dlp/yt-dlp). Special thanks to [Charlie Macquarie](https://charliemacquarie.com).
