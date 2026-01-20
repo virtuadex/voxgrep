@@ -131,18 +131,6 @@ def parse(vtt: Union[io.IOBase, str]) -> List[dict]:
     return out
 
 
-def convert_to_srt(sentence):
-    out = []
-    for i, sentence in enumerate(sentence):
-        out.append(str(i))
-        start = sentence["words"][0]["start"]
-        end = sentence["words"][-1]["end"]
-        start = secs_to_timestamp(start)
-        end = secs_to_timestamp(end)
-        out.append("{} --> {}".format(start, end))
-        out.append(sentence["text"])
-        out.append("")
-    return "\n".join(out)
 
 def render(segments: List[dict], outputfile: str):
     """

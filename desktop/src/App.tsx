@@ -6,7 +6,7 @@ import { InputSource } from "./components/InputSource";
 import { Library } from "./components/Library";
 import { SearchDashboard } from "./components/SearchDashboard";
 import { VideoFile, AppStatus, SearchMatch } from "./types";
-import { downloadVideo, openFolder } from "./api";
+import { downloadVideo, addLocalFile, openFolder } from "./api";
 import { useLibrary } from "./hooks/useLibrary";
 import { useSearch } from "./hooks/useSearch";
 
@@ -31,16 +31,34 @@ function App() {
 
   const handleDownload = async () => {
     if (!url) return;
-    setStatus("downloading");
+    
+    // Detect if it's a local file path or URL
+    const isLocalFile = url.startsWith('/') || url.match(/^[A-Za-z]:\\/);
+    const device = useGPU ? "mlx" : "auto";
+    
+    setStatus(isLocalFile ? "transcribing" : "downloading");
     setProgress(10);
+    
     try {
-      await downloadVideo(url);
+      if (isLocalFile) {
+        await addLocalFile(url, device);
+        setMessage("Local file added and transcription started");
+      } else {
+        await downloadVideo(url, device);
+        setMessage("Download and transcription started");
+      }
+      
+      setTimeout(() => setMessage(null), 3000);
       setStatus("idle");
       setProgress(0);
-      scan("downloads");
+      
+      // Refresh library after a delay to allow background task to complete
+      setTimeout(() => scan("downloads"), 2000);
     } catch (e) {
-      console.error("Download failed:", e);
+      console.error("Processing failed:", e);
       setStatus("error");
+      setMessage("Failed to process file");
+      setTimeout(() => setMessage(null), 5000);
     }
   };
 
@@ -83,11 +101,11 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-8 font-['Inter']">
+    <div className="min-h-screen p-6 lg:p-12 max-w-[1920px] mx-auto relative z-10">
       <Header message={message} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <div className="lg:col-span-1 space-y-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-8 lg:mt-12">
+        <div className="lg:col-span-4 space-y-8">
           <InputSource 
             url={url} 
             setUrl={setUrl} 
@@ -105,11 +123,12 @@ function App() {
           />
         </div>
 
-        <div className="lg:col-span-3">
-          <div className="mb-4 flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Scope:</span>
-            <span className={`text-xs font-mono px-2 py-1 rounded border ${selectedVideo ? "bg-blue-500/20 border-blue-500/50 text-blue-400" : "bg-slate-800 border-slate-700 text-slate-400"}`}>
-              {selectedVideo ? selectedVideo.filename : "ALL INDEXED LIBRARY"}
+        <div className="lg:col-span-8">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="w-2 h-2 bg-accent-orange rounded-full animate-pulse" />
+            <span className="technical-text text-text-muted">Active Scope //</span>
+            <span className={`technical-text px-2 py-0.5 border ${selectedVideo ? "bg-accent-blue text-white border-accent-blue" : "bg-bg-secondary border-border-main text-text-main"}`}>
+              {selectedVideo ? selectedVideo.filename : "FULL_LIBRARY_INDEX"}
             </span>
           </div>
           
@@ -131,11 +150,10 @@ function App() {
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 10px;
+          background: var(--color-border-strong);
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.2);
+          background: var(--color-accent-blue);
         }
       `}</style>
     </div>

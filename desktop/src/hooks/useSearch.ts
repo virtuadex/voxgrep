@@ -5,7 +5,7 @@ import { SearchMatch, VideoFile } from "../types";
 export function useSearch(selectedVideo: VideoFile | null, ngramN: number) {
   const searchMutation = useMutation({
     mutationFn: ({ query, type, threshold }: { query: string; type: string; threshold: number }) => 
-      searchMedia(query, type, threshold),
+      searchMedia(query, type as any, threshold),
   });
 
   const ngramsQuery = useQuery({
@@ -15,7 +15,7 @@ export function useSearch(selectedVideo: VideoFile | null, ngramN: number) {
 
   const exportMutation = useMutation({
     mutationFn: ({ matches, output }: { matches: SearchMatch[]; output: string }) => 
-      exportSupercut(matches, output),
+      exportSupercut(matches, { output }),
   });
 
   return {

@@ -1,12 +1,9 @@
 __version__ = "2.3.1"
 
 # Core modules
-from . import vtt, srt, sphinx, fcpxml
+from . import vtt, srt, sphinx, fcpxml, config, exceptions, utils
 
-# New infrastructure modules
-from . import config, exceptions, utils
-
-# Main voxgrep function and utilities
+# Main voxgrep function
 from .voxgrep import (
     voxgrep,
     remove_overlaps,
@@ -31,11 +28,6 @@ from .exporter import (
     export_mpv_edl,
     export_xml,
     cleanup_log_files,
-    get_file_type,
-    get_input_type,
-    plan_no_action,
-    plan_video_output,
-    plan_audio_output,
     BATCH_SIZE,  # Legacy compatibility
 )
 
@@ -59,5 +51,5 @@ from .utils import (
     is_audio_file,
     is_media_file,
     validate_media_file,
+    get_media_type,
 )
-

@@ -37,11 +37,15 @@ def transcribe_whisper(
     prompt: Optional[str] = None, 
     language: Optional[str] = None, 
     device: str = DEFAULT_DEVICE, 
-    compute_type: str = DEFAULT_COMPUTE_TYPE
+    compute_type: str = DEFAULT_COMPUTE_TYPE,
+    progress_callback: Optional[callable] = None
 ) -> List[dict]:
     """
     Transcribes a video file using faster-whisper (CTranslate2)
     With word-level timestamps enabled.
+    
+    Args:
+        progress_callback: Optional callback function(current_seconds, total_seconds)
     """
     if not WHISPER_AVAILABLE:
         raise TranscriptionModelNotAvailableError(
@@ -77,36 +81,68 @@ def transcribe_whisper(
         logger.info(f"Transcription started. Detected language: {info.language}")
         
         out = []
-        pbar = tqdm(total=info.duration, unit="sec", desc="Transcribing", bar_format="{l_bar}{bar}| {n:.2f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]")
         
-        for segment in segments_generator:
-            # segment has .text, .start, .end, .words (list of Word objects)
-            pbar.update(segment.end - pbar.n)
+        # Use callback if provided, otherwise use tqdm
+        if progress_callback:
+            current_time = 0
+            for segment in segments_generator:
+                current_time = segment.end
+                progress_callback(current_time, info.duration)
+                
+                content = segment.text.strip()
+                start_sec = segment.start
+                end_sec = segment.end
+                
+                w_list = []
+                if segment.words:
+                    for w in segment.words:
+                        w_list.append({
+                            "word": w.word.strip(),
+                            "start": w.start,
+                            "end": w.end,
+                            "conf": w.probability
+                        })
+                
+                item = {
+                    "content": content,
+                    "start": start_sec,
+                    "end": end_sec,
+                    "words": w_list
+                }
+                
+                out.append(item)
+        else:
+            # Fallback to tqdm for non-CLI usage
+            pbar = tqdm(total=info.duration, unit="sec", desc="Transcribing", bar_format="{l_bar}{bar}| {n:.2f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]")
             
-            content = segment.text.strip()
-            start_sec = segment.start
-            end_sec = segment.end
+            for segment in segments_generator:
+                pbar.update(segment.end - pbar.n)
+                
+                content = segment.text.strip()
+                start_sec = segment.start
+                end_sec = segment.end
+                
+                w_list = []
+                if segment.words:
+                    for w in segment.words:
+                        w_list.append({
+                            "word": w.word.strip(),
+                            "start": w.start,
+                            "end": w.end,
+                            "conf": w.probability
+                        })
+                
+                item = {
+                    "content": content,
+                    "start": start_sec,
+                    "end": end_sec,
+                    "words": w_list
+                }
+                
+                out.append(item)
             
-            w_list = []
-            if segment.words:
-                for w in segment.words:
-                    w_list.append({
-                        "word": w.word.strip(),
-                        "start": w.start,
-                        "end": w.end,
-                        "conf": w.probability
-                    })
-            
-            item = {
-                "content": content,
-                "start": start_sec,
-                "end": end_sec,
-                "words": w_list
-            }
-            
-            out.append(item)
+            pbar.close()
         
-        pbar.close()
         logger.info(f"Processed {len(out)} segments.")
         
         # Explicitly cleanup model to avoid crashes on return
@@ -187,10 +223,14 @@ def transcribe(
     prompt: Optional[str] = None, 
     language: Optional[str] = None, 
     device: str = DEFAULT_DEVICE, 
-    compute_type: str = DEFAULT_COMPUTE_TYPE
+    compute_type: str = DEFAULT_COMPUTE_TYPE,
+    progress_callback: Optional[callable] = None
 ) -> List[dict]:
     """
     Transcribes a video file using Whisper, handling caching and backend selection.
+    
+    Args:
+        progress_callback: Optional callback function(current_seconds, total_seconds)
     """
     if not os.path.exists(videofile):
         raise VoxGrepFileNotFoundError(f"Could not find file {videofile}")
@@ -211,7 +251,22 @@ def transcribe(
     
     # Check backend selection
     if device == "mlx":
+        # Map short names to MLX community repos
+        MLX_MODEL_MAPPING = {
+            "tiny": "mlx-community/whisper-tiny-mlx",
+            "base": "mlx-community/whisper-base-mlx",
+            "small": "mlx-community/whisper-small-mlx",
+            "medium": "mlx-community/whisper-medium-mlx",
+            "large": "mlx-community/whisper-large-v3-mlx",
+            "large-v3": "mlx-community/whisper-large-v3-mlx",
+            "large-v2": "mlx-community/whisper-large-v2-mlx",
+            "distil-large-v3": "mlx-community/distil-whisper-large-v3"
+        }
+        
         _model = model_name or DEFAULT_MLX_MODEL
+        if _model in MLX_MODEL_MAPPING:
+            _model = MLX_MODEL_MAPPING[_model]
+            
         out = transcribe_mlx(videofile, _model, language=language, prompt=prompt)
     else:
         _model = model_name or DEFAULT_WHISPER_MODEL
@@ -221,7 +276,8 @@ def transcribe(
             prompt=prompt, 
             language=language, 
             device=device, 
-            compute_type=compute_type
+            compute_type=compute_type,
+            progress_callback=progress_callback
         )
 
     if not out:

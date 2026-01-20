@@ -1,11 +1,11 @@
 [tool.poetry]
 name = "voxgrep"
-version = "2.3.1"
+version = "3.0.0"
 description = "VoxGrep is a command line tool that searches through dialog in video and audio files and makes supercuts based on what it finds. Like grep but for video."
 authors = ["virtuadex <subs.greedy988@simplelogin.fr>"]
 readme = "README.md"
 homepage = "https://x.com/dexteroliveira"
-keywords = ["video", "supercut"]
+keywords = ["video", "supercut", "transcription", "whisper", "semantic-search"]
 classifiers = [
   "Topic :: Multimedia :: Video",
   "Topic :: Multimedia :: Sound/Audio :: Speech",
@@ -15,27 +15,48 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.10"
+# Core dependencies
 numpy = "^2.0.0"
 beautifulsoup4 = "^4.12.3"
 moviepy = "^2.0.0" 
 imageio-ffmpeg = "*"
 yt-dlp = "^2025.12.8"
 tqdm = "^4.66.0"
-spacy = {version = "^3.8.0", optional = true}
+rich = "^13.0.0"
+questionary = "^2.0.0"
+
+# Transcription (Phase 1)
 faster-whisper = "^1.2.1"
-mlx-whisper = "^0.4.3"
+
+# Apple Silicon (Phase 3 - optional for non-Mac)
+mlx-whisper = {version = "^0.4.3", optional = true}
+
+# Semantic Search (Phase 2)
 sentence-transformers = "^5.2.0"
+torch = ">=2.0.0"
+
+# Server (Phase 1)
 fastapi = "^0.128.0"
 uvicorn = "^0.40.0"
 sqlmodel = "^0.0.31"
 
+# Optional dependencies
+spacy = {version = "^3.8.0", optional = true}
+pyannote-audio = {version = "^3.3.0", optional = true}  # Phase 2: Speaker diarization
+openai = {version = "^1.0.0", optional = true}  # Phase 3: OpenAI API
+
 [tool.poetry.extras]
-full = ["spacy"]
+full = ["spacy", "pyannote-audio", "openai", "mlx-whisper"]
 nlp = ["spacy"]
+diarization = ["pyannote-audio"]
+openai = ["openai"]
+mlx = ["mlx-whisper"]
 
 [tool.poetry.group.dev.dependencies]
 tox = "^4.0.0"
 pytest = "^8.1.1"
+pytest-asyncio = "^0.24.0"
+httpx = "^0.28.0"  # For testing FastAPI
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -43,3 +64,8 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 voxgrep = "voxgrep.cli:main"
+voxgrep-server = "voxgrep.server.app:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

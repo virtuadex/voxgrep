@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, CheckCircle2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 
 interface HeaderProps {
   message?: string | null;
@@ -13,26 +13,26 @@ export function Header({ message }: HeaderProps) {
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <h1 className="text-5xl font-black bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent tracking-tighter">
+        <h1 className="text-5xl font-black text-text-main tracking-tighter mix-blend-multiply">
           VOXGREP
         </h1>
         <div className="flex items-center gap-4 mt-2">
-          <div className="flex items-center gap-2 px-3 py-1 bg-slate-900/50 rounded-full border border-slate-800/50">
-            <Zap size={12} className="text-amber-400 fill-amber-400/20" />
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-              System Online • Ready
+          <div className="flex items-center gap-2 px-3 py-1 bg-white border border-border-main rounded-sm shadow-sm">
+            <div className="w-2 h-2 rounded-full bg-accent-orange" />
+            <p className="technical-text text-text-muted">
+              System Online
             </p>
           </div>
           
           <AnimatePresence>
             {message && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                initial={{ opacity: 0, scale: 0.9, y: 5 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.8, y: -10 }}
-                className="flex items-center gap-2 px-3 py-1 bg-green-500/10 text-green-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-green-500/20 shadow-[0_0_15px_rgba(34,197,94,0.1)]"
+                exit={{ opacity: 0, scale: 0.9, y: -5 }}
+                className="flex items-center gap-2 px-3 py-1 bg-accent-blue text-white technical-text rounded-sm shadow-md"
               >
-                <CheckCircle2 size={10} />
+                <CheckCircle2 size={12} />
                 {message}
               </motion.div>
             )}
@@ -40,8 +40,8 @@ export function Header({ message }: HeaderProps) {
         </div>
       </motion.div>
       <div className="text-right">
-        <div className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Build Version</div>
-        <div className="text-xs font-mono text-slate-600 bg-slate-900/80 px-2 py-1 rounded border border-slate-800/50">
+        <div className="technical-text text-text-muted mb-1">Build Version</div>
+        <div className="text-xs font-mono text-text-main bg-bg-secondary px-2 py-1 border border-border-main">
           v0.2.0-alpha
         </div>
       </div>

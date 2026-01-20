@@ -12,13 +12,19 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "voxgrep-gui",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "dragDropEnabled": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost; video-src 'self' asset: https://asset.localhost; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-eval' 'unsafe-inline';",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
     }
   },
   "bundle": {

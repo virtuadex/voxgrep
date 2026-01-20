@@ -3,12 +3,13 @@ import re
 import json
 import random
 from pathlib import Path
-from typing import Optional, List, Union, Iterator
+from typing import Optional, List, Union, Iterator, Dict
 from tqdm import tqdm
 
 import numpy as np
 try:
     from sentence_transformers import SentenceTransformer, util
+    import torch
     SEMANTIC_AVAILABLE = True
 except ImportError:
     SEMANTIC_AVAILABLE = False
@@ -35,20 +36,67 @@ SUB_EXTS = SUBTITLE_EXTENSIONS
 class SemanticModel:
     """Singleton class for managing the semantic search model."""
     _instance = None
+    _device = None
 
     @classmethod
     def get_instance(cls, model_name: Optional[str] = None):
-        """Get or create the semantic model instance."""
+        """Get or create the semantic model instance with device detection."""
         if cls._instance is None:
             if not SEMANTIC_AVAILABLE:
                 raise SemanticSearchNotAvailableError(
                     "sentence-transformers is not installed. "
                     "Install with 'pip install sentence-transformers'"
                 )
+            
             model_name = model_name or DEFAULT_SEMANTIC_MODEL
-            logger.info(f"Loading semantic model: {model_name}")
-            cls._instance = SentenceTransformer(model_name)
+            
+            # Device detection for acceleration
+            if torch.cuda.is_available():
+                cls._device = "cuda"
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                cls._device = "mps"
+            else:
+                cls._device = "cpu"
+                
+            logger.info(f"Loading semantic model: {model_name} on {cls._device}")
+            cls._instance = SentenceTransformer(model_name, device=cls._device)
+            
         return cls._instance
+
+
+class TranscriptCache:
+    """Singleton for caching parsed transcripts to avoid redundant I/O."""
+    _cache: Dict[str, List[dict]] = {}
+    _files_mtime: Dict[str, float] = {}
+
+    @classmethod
+    def get(cls, subfile: str) -> Optional[List[dict]]:
+        """Get transcript from cache if available and file hasn't changed."""
+        if not os.path.exists(subfile):
+            return None
+            
+        try:
+            mtime = os.path.getmtime(subfile)
+            if subfile in cls._cache and cls._files_mtime.get(subfile) == mtime:
+                return cls._cache[subfile]
+        except OSError:
+            pass
+        return None
+
+    @classmethod
+    def set(cls, subfile: str, transcript: List[dict]):
+        """Cache the transcript and its modification time."""
+        try:
+            cls._cache[subfile] = transcript
+            cls._files_mtime[subfile] = os.path.getmtime(subfile)
+        except OSError:
+            pass
+
+    @classmethod
+    def clear(cls):
+        """Clear the cache."""
+        cls._cache.clear()
+        cls._files_mtime.clear()
 
 
 def find_transcript(videoname: str, prefer: Optional[str] = None) -> Optional[str]:
@@ -124,6 +172,11 @@ def parse_transcript(
         logger.error(f"No subtitle file found for {videoname}")
         return None
 
+    # Check cache first
+    cached = TranscriptCache.get(subfile)
+    if cached is not None:
+        return cached
+
     transcript = None
 
     try:
@@ -140,6 +193,9 @@ def parse_transcript(
         logger.error(f"Error parsing transcript file {subfile}: {e}")
         return None
 
+    if transcript is not None:
+        TranscriptCache.set(subfile, transcript)
+
     return transcript
 
 
@@ -151,18 +207,9 @@ def get_embeddings_path(videoname: str) -> str:
 def get_embeddings(videoname: str, transcript: List[dict], force: bool = False) -> np.ndarray:
     """
     Get or generate semantic embeddings for a transcript.
-    
-    Args:
-        videoname: Path to the video file
-        transcript: Parsed transcript data
-        force: If True, regenerate embeddings even if cached
-    
-    Returns:
-        NumPy array of embeddings
     """
     emb_path = get_embeddings_path(videoname)
     if os.path.exists(emb_path) and not force:
-        logger.debug(f"Loading cached embeddings from {emb_path}")
         return np.load(emb_path)
     
     model = SemanticModel.get_instance()
@@ -176,13 +223,6 @@ def get_embeddings(videoname: str, transcript: List[dict], force: bool = False) 
 def get_ngrams(files: Union[str, List[str]], n: int = 1) -> Iterator[tuple]:
     """
     Extract n-grams from transcript files.
-    
-    Args:
-        files: Single file path or list of file paths
-        n: Size of n-grams (1 for unigrams, 2 for bigrams, etc.)
-    
-    Returns:
-        Iterator of n-gram tuples
     """
     files = ensure_list(files)
     words = []
@@ -208,34 +248,23 @@ def search(
     prefer: Optional[str] = None,
     threshold: float = DEFAULT_SEMANTIC_THRESHOLD,
     force_reindex: bool = False,
+    exact_match: bool = False,
 ) -> List[dict]:
     """
     Search through video/audio files for a specific query.
-    
-    Args:
-        files: Single file path or list of file paths
-        query: Search query or list of queries
-        search_type: Type of search ('sentence', 'fragment', 'mash', 'semantic')
-        prefer: Preferred subtitle extension
-        threshold: Similarity threshold for semantic search
-        force_reindex: If True, force regeneration of embeddings for semantic search
-        
-    Returns:
-        List of matching segments
     """
     files = ensure_list(files)
     query = ensure_list(query)
     all_segments = []
 
     if search_type == "mash":
-        # For mash, we need to collect ALL words from ALL files first
         all_words = []
         for file in tqdm(files, desc="Indexing words for mash", unit="file", disable=len(files) < 2):
             transcript = parse_transcript(file, prefer=prefer)
             if transcript and len(transcript) > 0 and "words" in transcript[0]:
                 for line in transcript:
                     for w in line["words"]:
-                        w["file"] = file # Ensure we know which file the word came from
+                        w["file"] = file
                         all_words.append(w)
         
         if not all_words:
@@ -246,57 +275,78 @@ def search(
             queries = _query.split(" ")
             for q in queries:
                 matches = [w for w in all_words if re.sub(r"[.?!,:\"]+", "", w["word"].lower()) == q.lower()]
-                if len(matches) == 0:
-                    logger.error(f"Could not find '{q}' in any transcript.")
+                if not matches:
                     continue 
-                
                 word = random.choice(matches)
-                all_segments.append(
-                    {
-                        "file": word["file"],
-                        "start": word["start"],
-                        "end": word["end"],
-                        "content": word["word"],
-                    }
-                )
+                all_segments.append({
+                    "file": word["file"],
+                    "start": word["start"],
+                    "end": word["end"],
+                    "content": word["word"],
+                })
         return all_segments
 
     if search_type == "semantic":
         if not SEMANTIC_AVAILABLE:
-            raise SemanticSearchNotAvailableError(
-                "Semantic search requires sentence-transformers. "
-                "Install with 'pip install sentence-transformers'"
-            )
+            raise SemanticSearchNotAvailableError("Semantic search requires sentence-transformers.")
         
         model = SemanticModel.get_instance()
         query_embeddings = model.encode(query, show_progress_bar=False)
-
-        for file in tqdm(files, desc="Semantic search", unit="file", disable=len(files) < 2):
+        
+        # Batch processing: Collect all embeddings from all files
+        total_embeddings = []
+        embedding_metadata = [] # (file, index_in_transcript)
+        
+        for file in tqdm(files, desc="Loading embeddings", unit="file", disable=len(files) < 2):
             transcript = parse_transcript(file, prefer=prefer)
             if not transcript:
                 continue
             
             embeddings = get_embeddings(file, transcript, force=force_reindex)
-            # util.cos_sim returns a matrix of shape [len(queries), len(sentences)]
-            cos_scores = util.cos_sim(query_embeddings, embeddings)
-
-            for i, _query in enumerate(query):
-                scores = cos_scores[i]
-                for j, score in enumerate(scores):
-                    if score >= threshold:
-                        all_segments.append({
-                            "file": file,
-                            "start": transcript[j]["start"],
-                            "end": transcript[j]["end"],
-                            "content": transcript[j]["content"],
-                            "score": float(score)
-                        })
+            total_embeddings.append(embeddings)
+            for j in range(len(transcript)):
+                embedding_metadata.append((file, transcript[j]))
         
-        # Sort by score descending
-        all_segments = sorted(all_segments, key=lambda k: k["score"], reverse=True)
-        return all_segments
+        if not total_embeddings or len(query_embeddings) == 0:
+            return []
+            
+        # Combine into one large matrix
+        combined_embeddings = np.vstack(total_embeddings)
+        
+        # Guard against dimension mismatch (mat1 shape 1x0 usually means empty query results)
+        if query_embeddings.ndim < 2 or query_embeddings.shape[1] == 0:
+            logger.error("Query embeddings have invalid shape. Check your search terms.")
+            return []
+            
+        # Compute all scores at once (matrix multiplication)
+        cos_scores = util.cos_sim(query_embeddings, combined_embeddings)
+        
+        for i, _query in enumerate(query):
+            scores = cos_scores[i]
+            # Use argwhere or similar for fast thresholding
+            indices = np.where(scores >= threshold)[0]
+            for idx in indices:
+                file_path, segment = embedding_metadata[idx]
+                all_segments.append({
+                    "file": file_path,
+                    "start": segment["start"],
+                    "end": segment["end"],
+                    "content": segment["content"],
+                    "score": float(scores[idx])
+                })
+        
+        return sorted(all_segments, key=lambda k: k["score"], reverse=True)
 
     # Standard regex/fragment search
+    compiled_queries = []
+    for q in query:
+        pattern = q
+        if exact_match:
+            # Escape the query to treat it as literal string, then add boundaries
+            pattern = r"\b" + re.escape(q) + r"\b"
+            
+        compiled_queries.append((q, re.compile(pattern, re.IGNORECASE)))
+
     for file in tqdm(files, desc="Searching files", unit="file", disable=len(files) < 2):
         segments = []
         transcript = parse_transcript(file, prefer=prefer)
@@ -305,48 +355,41 @@ def search(
 
         if search_type == "sentence":
             for line in transcript:
-                for _query in query:
-                    if re.search(_query, line["content"], re.IGNORECASE):
-                        segments.append(
-                            {
-                                "file": file,
-                                "start": line["start"],
-                                "end": line["end"],
-                                "content": line["content"],
-                            }
-                        )
+                content = line["content"]
+                for _query_str, _query_regex in compiled_queries:
+                    if _query_regex.search(content):
+                        segments.append({
+                            "file": file,
+                            "start": line["start"],
+                            "end": line["end"],
+                            "content": content,
+                        })
 
         elif search_type == "fragment":
-            if len(transcript) == 0 or "words" not in transcript[0]:
-                logger.error(f"Could not find word-level timestamps for {file}")
+            if not transcript or "words" not in transcript[0]:
                 continue
 
             words = []
             for line in transcript:
                 words += line["words"]
 
-            for _query in query:
-                queries = _query.split(" ")
-                queries = [q.strip() for q in queries if q.strip() != ""]
-                fragments = zip(*[words[i:] for i in range(len(queries))])
-                for fragment in fragments:
-                    found = all(
-                        re.search(q, w["word"], re.IGNORECASE) for q, w in zip(queries, fragment)
-                    )
-                    if found:
-                        phrase = " ".join([w["word"] for w in fragment])
-                        segments.append(
-                            {
-                                "file": file,
-                                "start": fragment[0]["start"],
-                                "end": fragment[-1]["end"],
-                                "content": phrase,
-                            }
-                        )
+            for _query_str, _query_regex in compiled_queries:
+                queries = [q.strip() for q in _query_str.split(" ") if q.strip()]
+                if not queries: continue
+                
+                fragment_len = len(queries)
+                for i in range(len(words) - fragment_len + 1):
+                    fragment = words[i:i+fragment_len]
+                    if all(re.search(q, w["word"], re.IGNORECASE) for q, w in zip(queries, fragment)):
+                        all_segments.append({
+                            "file": file,
+                            "start": fragment[0]["start"],
+                            "end": fragment[-1]["end"],
+                            "content": " ".join([w["word"] for w in fragment]),
+                        })
         else:
             raise InvalidSearchTypeError(f"Unsupported search type: {search_type}")
 
-        segments = sorted(segments, key=lambda k: k["start"])
-        all_segments += segments
+        all_segments += sorted(segments, key=lambda k: k["start"])
 
     return all_segments
