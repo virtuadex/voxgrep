@@ -8,8 +8,8 @@ import os
 from typing import List, Optional, Dict, Any, Tuple
 from pathlib import Path
 
-from ..config import get_cache_dir
-from ..utils import setup_logger
+from ..utils.config import get_cache_dir
+from ..utils.helpers import setup_logger
 
 logger = setup_logger(__name__)
 

@@ -1,5 +1,5 @@
 from sqlmodel import SQLModel, create_engine, Session
-from ..config import ServerConfig, get_data_dir
+from ..utils.config import ServerConfig, get_data_dir
 
 # Get config
 config = ServerConfig()
