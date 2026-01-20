@@ -46,7 +46,8 @@ class TestEnvironmentDoctor:
         """Test checking for available system command."""
         doctor = EnvironmentDoctor()
         # Python should always be available in test environment
-        result = doctor.check_command_available("python3")
+        # On Windows, python3.exe often doesn't exist, use python
+        result = doctor.check_command_available("python")
         assert result is True
     
     def test_check_command_unavailable(self):

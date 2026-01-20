@@ -31,22 +31,22 @@ from .exporter import (
     BATCH_SIZE,  # Legacy compatibility
 )
 
-# Expose commonly used items from new modules
-from .config import (
+# Expose commonly used items from utils package
+from .utils.config import (
     SUBTITLE_EXTENSIONS,
     VIDEO_EXTENSIONS,
     AUDIO_EXTENSIONS,
     MEDIA_EXTENSIONS,
 )
 
-from .exceptions import (
+from .utils.exceptions import (
     VoxGrepError,
     TranscriptNotFoundError,
     SearchError,
     NoResultsFoundError,
 )
 
-from .utils import (
+from .utils.helpers import (
     is_video_file,
     is_audio_file,
     is_media_file,

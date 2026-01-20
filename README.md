@@ -21,8 +21,14 @@ Search for phrases, patterns, or even semantic concepts across your video librar
 
 ## 🚀 Getting Started
 
-To get started quickly, follow our [**Getting Started Guide**](docs/GETTING_STARTED.md).
+### Windows (Automated)
+```powershell
+git clone https://github.com/virtuadex/voxgrep.git
+cd voxgrep
+.\installvoxgrep.ps1
+```
 
+### macOS / Linux
 ```bash
 # Install with full features
 pip install "voxgrep[full]"
@@ -30,6 +36,8 @@ pip install "voxgrep[full]"
 # Run the CLI
 voxgrep --input movie.mp4 --search "hello world" --transcribe
 ```
+
+📖 **For detailed instructions**, see our [**Getting Started Guide**](docs/GETTING_STARTED.md).
 
 ---
 

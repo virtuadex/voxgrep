@@ -29,7 +29,7 @@ questionary = "^2.0.0"
 faster-whisper = "^1.2.1"
 
 # Apple Silicon (Phase 3 - optional for non-Mac)
-mlx-whisper = {version = "^0.4.3", optional = true}
+mlx-whisper = {version = "^0.4.3", optional = true, markers = "sys_platform == 'darwin'"}
 
 # Semantic Search (Phase 2)
 sentence-transformers = "^5.2.0"

@@ -4,6 +4,7 @@ Comprehensive tests for VoxGrep CLI interactive modes and argument parsing.
 
 import pytest
 import sys
+import os
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock, call
 from argparse import Namespace
@@ -11,6 +12,12 @@ from argparse import Namespace
 # Import the CLI module
 from voxgrep import cli
 from voxgrep.cli import interactive_mode, execute_args, main
+
+# Skip interactive tests on Windows due to console buffer issues
+skip_on_windows = pytest.mark.skipif(
+    sys.platform == "win32" and not os.isatty(sys.stdout.fileno() if hasattr(sys.stdout, 'fileno') else -1),
+    reason="Interactive tests require TTY on Windows"
+)
 
 
 def File(path):
@@ -116,6 +123,7 @@ class TestCLIArgumentParsing:
                 assert mock_doctor.called
 
 
+@skip_on_windows
 class TestInteractiveModeSearch:
     """Test interactive mode search workflow."""
     
@@ -222,6 +230,7 @@ class TestInteractiveModeSearch:
         assert args.model == "base"
 
 
+@skip_on_windows
 class TestInteractiveModeNgrams:
     """Test interactive mode n-grams workflow."""
     
@@ -271,6 +280,7 @@ class TestInteractiveModeNgrams:
         assert mock_get_ngrams.called
 
 
+@skip_on_windows
 class TestInteractiveModeFileSelection:
     """Test interactive mode file selection options."""
     
@@ -475,6 +485,7 @@ class TestCLIPreferences:
         assert prefs["whisper_model"] == "large-v3"
 
 
+@skip_on_windows
 class TestCLIErrorHandling:
     """Test CLI error handling and edge cases."""
     

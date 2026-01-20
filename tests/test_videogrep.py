@@ -4,6 +4,7 @@ from pathlib import Path
 from pytest import approx
 import subprocess
 import sys
+import os
 
 
 def get_duration(input_video):
@@ -62,11 +63,12 @@ def test_cued_vtts():
 def test_find_sub():
     testvid = File("test_inputs/metallica.mp4")
     testsubfile = File("test_inputs/metallica.json")
-    assert voxgrep.find_transcript(testvid) == testsubfile
+    # Normalize paths to handle slashes consistently
+    assert os.path.normpath(voxgrep.find_transcript(testvid)) == os.path.normpath(testsubfile)
 
     testaud = File("test_inputs/metallica.mp3")
     testsubfile = File("test_inputs/metallica.json")
-    assert voxgrep.find_transcript(testaud) == testsubfile
+    assert os.path.normpath(voxgrep.find_transcript(testaud)) == os.path.normpath(testsubfile)
 
 
 def test_parse_transcript():
@@ -76,12 +78,12 @@ def test_parse_transcript():
 
 
 def test_remove_overlaps():
-    segments = [{"start": 0, "end": 1}, {"start": 0.5, "end": 2}]
+    segments = [{"start": 0, "end": 1, "file": "f1"}, {"start": 0.5, "end": 2, "file": "f1"}]
     cleaned = voxgrep.remove_overlaps(segments)
     assert len(cleaned) == 1
     assert cleaned[-1]["end"] == 2
 
-    segments = [{"start": 0, "end": 1}, {"start": 2, "end": 3}]
+    segments = [{"start": 0, "end": 1, "file": "f1"}, {"start": 2, "end": 3, "file": "f1"}]
     cleaned = voxgrep.remove_overlaps(segments)
     assert len(cleaned) == 2
     assert cleaned[-1]["end"] == 3
@@ -151,7 +153,7 @@ def test_word_search_json():
 def test_cli():
     infile = File("test_inputs/metallica.mp4")
     outfile = File("test_outputs/supercut.mp4")
-    subprocess.run(
+    result = subprocess.run(
         [
             sys.executable,
             "-m",
@@ -166,7 +168,17 @@ def test_cli():
             "fragment",
             "--max-clips",
             "1",
-        ]
+        ],
+        capture_output=True,
+        text=True
     )
-
+    
+    # Check if CLI succeeded
+    if result.returncode != 0:
+        print(f"CLI failed with return code {result.returncode}")
+        print(f"STDOUT: {result.stdout}")
+        print(f"STDERR: {result.stderr}")
+    
+    assert result.returncode == 0, f"CLI command failed: {result.stderr}"
+    assert os.path.exists(outfile), f"Output file not created: {outfile}"
     assert get_duration(outfile) > 0

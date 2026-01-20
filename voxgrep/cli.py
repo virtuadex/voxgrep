@@ -649,19 +649,15 @@ def main():
         version=f"VoxGrep {__version__}",
     )
 
-    try:
-        args = parser.parse_args()
-        
-        # Handle doctor command first (diagnostic mode)
-        if hasattr(args, 'doctor') and args.doctor:
-            from .doctor import run_doctor
-            sys.exit(run_doctor())
-        
-        # Validate that --input is provided for non-diagnostic operations
-        if not args.inputfile:
-            parser.error("the following arguments are required: --input/-i")
-        
-        execute_args(args)
-    except SystemExit:
-        # If argparse fails (e.g. invalid args), standard error is printed.
-        pass
+    args = parser.parse_args()
+    
+    # Handle doctor command first (diagnostic mode)
+    if hasattr(args, 'doctor') and args.doctor:
+        from .doctor import run_doctor
+        sys.exit(run_doctor())
+    
+    # Validate that --input is provided for non-diagnostic operations
+    if not args.inputfile:
+        parser.error("the following arguments are required: --input/-i")
+    
+    execute_args(args)

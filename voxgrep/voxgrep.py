@@ -11,8 +11,8 @@ from rich import box
 from . import search_engine as search_module
 from . import exporter
 from . import vtt
-from .config import DEFAULT_PADDING, BATCH_SIZE
-from .utils import setup_logger, ensure_list, ensure_directory_exists
+from .utils.config import DEFAULT_PADDING, BATCH_SIZE
+from .utils.helpers import setup_logger, ensure_list, ensure_directory_exists
 
 logger = setup_logger(__name__)
 
