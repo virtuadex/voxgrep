@@ -1,9 +1,9 @@
 from unittest.mock import patch, MagicMock
 import numpy as np
-from voxgrep import search_engine
+from voxgrep.core import engine as search_engine
 
-@patch('voxgrep.search_engine.SentenceTransformer')
-@patch('voxgrep.search_engine.util.cos_sim')
+@patch('voxgrep.core.engine.SentenceTransformer')
+@patch('voxgrep.core.engine.util.cos_sim')
 def test_semantic_search_mock(mock_cos_sim, mock_transformer, tmp_path):
     # Setup mock model
     mock_model = MagicMock()
@@ -33,11 +33,11 @@ def test_semantic_search_mock(mock_cos_sim, mock_transformer, tmp_path):
         json.dump(transcript, f)
         
     # We need to mock SEMANTIC_AVAILABLE
-    with patch('voxgrep.search_engine.SEMANTIC_AVAILABLE', True):
+    with patch('voxgrep.core.engine.SEMANTIC_AVAILABLE', True):
         # We also need to mock get_embeddings to avoid actual encoding if we want, 
         # but let's test the flow.
         # Actually SemanticModel singleton will try to load.
-        with patch('voxgrep.search_engine.SemanticModel.get_instance', return_value=mock_model):
+        with patch('voxgrep.core.engine.SemanticModel.get_instance', return_value=mock_model):
             results = search_engine.search(testvid, "Query", search_type="semantic", threshold=0.5)
             
     assert len(results) == 1

@@ -10,6 +10,7 @@ mock_responses = [
     "transcribe",      # Task selection (first time)
     "cpu",             # Device
     "tiny",            # Model
+    "auto",            # Language
     "exit"             # Exit after transcription
 ]
 
@@ -30,23 +31,29 @@ def mock_text(*args, **kwargs):
     mock_obj.ask.return_value = "1"
     return mock_obj
 
+def mock_confirm(*args, **kwargs):
+    mock_obj = MagicMock()
+    mock_obj.ask.return_value = False
+    return mock_obj
+
 with patch('voxgrep.cli.interactive.questionary.select', side_effect=mock_select):
     with patch('voxgrep.cli.interactive.questionary.checkbox', side_effect=mock_checkbox):
         with patch('voxgrep.cli.interactive.questionary.text', side_effect=mock_text):
-            with patch('voxgrep.core.transcriber.transcribe') as mock_transcribe:
-                # Mock successful transcription
-                mock_transcribe.return_value = [
-                    {"content": "Test", "start": 0.0, "end": 1.0, "words": []}
-                ]
-                
-                from voxgrep.cli.interactive import interactive_mode
-                
-                try:
-                    interactive_mode()
-                    print("✓ Interactive mode completed successfully")
-                    print("✓ Menu loop continued after transcription")
-                except Exception as e:
-                    print(f"✗ Error: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    sys.exit(1)
+            with patch('voxgrep.cli.interactive.questionary.confirm', side_effect=mock_confirm):
+                with patch('voxgrep.core.transcriber.transcribe') as mock_transcribe:
+                    # Mock successful transcription
+                    mock_transcribe.return_value = [
+                        {"content": "Test", "start": 0.0, "end": 1.0, "words": []}
+                    ]
+                    
+                    from voxgrep.cli.interactive import interactive_mode
+                    
+                    try:
+                        interactive_mode()
+                        print("✓ Interactive mode completed successfully")
+                        print("✓ Menu loop continued after transcription")
+                    except Exception as e:
+                        print(f"✗ Error: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        sys.exit(1)

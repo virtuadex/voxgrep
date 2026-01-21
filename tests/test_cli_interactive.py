@@ -37,8 +37,11 @@ class TestCLIArgumentParsing:
             "--output", "output.mp4"
         ]
         with patch.object(sys, 'argv', test_args):
-            with patch('voxgrep.cli.execute_args') as mock_execute:
-                cli.main()
+            with patch('voxgrep.cli.main.execute_args') as mock_execute:
+                mock_execute.return_value = True
+                with pytest.raises(SystemExit) as exc:
+                    cli.main()
+                assert exc.value.code == 0
                 assert mock_execute.called
                 args = mock_execute.call_args[0][0]
                 assert args.inputfile == ["test.mp4"]
@@ -54,8 +57,11 @@ class TestCLIArgumentParsing:
             "--search", "world"
         ]
         with patch.object(sys, 'argv', test_args):
-            with patch('voxgrep.cli.execute_args') as mock_execute:
-                cli.main()
+            with patch('voxgrep.cli.main.execute_args') as mock_execute:
+                mock_execute.return_value = True
+                with pytest.raises(SystemExit) as exc:
+                    cli.main()
+                assert exc.value.code == 0
                 args = mock_execute.call_args[0][0]
                 assert args.search == ["hello", "world"]
     
@@ -70,8 +76,11 @@ class TestCLIArgumentParsing:
                 "--search-type", search_type
             ]
             with patch.object(sys, 'argv', test_args):
-                with patch('voxgrep.cli.execute_args') as mock_execute:
-                    cli.main()
+                with patch('voxgrep.cli.main.execute_args') as mock_execute:
+                    mock_execute.return_value = True
+                    with pytest.raises(SystemExit) as exc:
+                        cli.main()
+                    assert exc.value.code == 0
                     args = mock_execute.call_args[0][0]
                     assert args.searchtype == search_type
     
@@ -86,8 +95,11 @@ class TestCLIArgumentParsing:
             "--language", "en"
         ]
         with patch.object(sys, 'argv', test_args):
-            with patch('voxgrep.cli.execute_args') as mock_execute:
-                cli.main()
+            with patch('voxgrep.cli.main.execute_args') as mock_execute:
+                mock_execute.return_value = True
+                with pytest.raises(SystemExit) as exc:
+                    cli.main()
+                assert exc.value.code == 0
                 args = mock_execute.call_args[0][0]
                 assert args.transcribe is True
                 assert args.model == "base"
@@ -105,8 +117,11 @@ class TestCLIArgumentParsing:
             "--demo"
         ]
         with patch.object(sys, 'argv', test_args):
-            with patch('voxgrep.cli.execute_args') as mock_execute:
-                cli.main()
+            with patch('voxgrep.cli.main.execute_args') as mock_execute:
+                mock_execute.return_value = True
+                with pytest.raises(SystemExit) as exc:
+                    cli.main()
+                assert exc.value.code == 0
                 args = mock_execute.call_args[0][0]
                 assert args.export_clips is True
                 assert args.write_vtt is True
@@ -116,7 +131,7 @@ class TestCLIArgumentParsing:
         """Test --doctor flag triggers environment diagnostics."""
         test_args = ["voxgrep", "--doctor"]
         with patch.object(sys, 'argv', test_args):
-            with patch('voxgrep.doctor.run_doctor') as mock_doctor:
+            with patch('voxgrep.cli.doctor.run_doctor') as mock_doctor:
                 mock_doctor.return_value = 0
                 with pytest.raises(SystemExit) as exc_info:
                     cli.main()
@@ -130,7 +145,7 @@ class TestInteractiveModeSearch:
     @patch('questionary.select')
     @patch('questionary.text')
     @patch('questionary.confirm')
-    @patch('voxgrep.cli.execute_args')
+    @patch('voxgrep.cli.main.execute_args')
     @patch('os.listdir')
     def test_interactive_search_basic(
         self, 
@@ -178,8 +193,8 @@ class TestInteractiveModeSearch:
         
         # Mock find_transcript
         with patch('voxgrep.cli.find_transcript', return_value="test.json"):
-            with patch('voxgrep.prefs.load_prefs', return_value={}):
-                with patch('voxgrep.prefs.save_prefs'):
+            with patch('voxgrep.utils.prefs.load_prefs', return_value={}):
+                with patch('voxgrep.utils.prefs.save_prefs'):
                     interactive_mode()
         
         # Verify execute_args was called
@@ -187,7 +202,7 @@ class TestInteractiveModeSearch:
     
     @patch('questionary.select')
     @patch('questionary.confirm')
-    @patch('voxgrep.cli.execute_args')
+    @patch('voxgrep.cli.main.execute_args')
     @patch('os.listdir')
     def test_interactive_transcribe_task(
         self, 
@@ -219,8 +234,8 @@ class TestInteractiveModeSearch:
         ]
         
         with patch('voxgrep.cli.find_transcript', return_value=None):
-            with patch('voxgrep.prefs.load_prefs', return_value={}):
-                with patch('voxgrep.prefs.save_prefs'):
+            with patch('voxgrep.utils.prefs.load_prefs', return_value={}):
+                with patch('voxgrep.utils.prefs.save_prefs'):
                     interactive_mode()
         
         assert mock_execute.called
@@ -272,8 +287,8 @@ class TestInteractiveModeNgrams:
         mock_confirm.return_value = Mock(ask=Mock(return_value=False))
         
         with patch('voxgrep.cli.find_transcript', return_value="test.json"):
-            with patch('voxgrep.prefs.load_prefs', return_value={}):
-                with patch('voxgrep.prefs.save_prefs'):
+            with patch('voxgrep.utils.prefs.load_prefs', return_value={}):
+                with patch('voxgrep.utils.prefs.save_prefs'):
                     with patch('voxgrep.cli.execute_args'):
                         interactive_mode()
         
@@ -298,7 +313,7 @@ class TestInteractiveModeFileSelection:
         
         mock_select.side_effect = [file_select, task_select]
         
-        with patch('voxgrep.prefs.load_prefs', return_value={}):
+        with patch('voxgrep.utils.prefs.load_prefs', return_value={}):
             interactive_mode()
         
         assert file_select.ask.called
@@ -322,7 +337,7 @@ class TestInteractiveModeFileSelection:
         task_select = Mock(ask=Mock(return_value="exit"))
         mock_select.side_effect = [file_select, task_select]
         
-        with patch('voxgrep.prefs.load_prefs', return_value={}):
+        with patch('voxgrep.utils.prefs.load_prefs', return_value={}):
             interactive_mode()
         
         assert checkbox_mock.ask.called
@@ -341,7 +356,7 @@ class TestInteractiveModeFileSelection:
         
         mock_select.side_effect = [file_select, task_select]
         
-        with patch('voxgrep.prefs.load_prefs', return_value={}):
+        with patch('voxgrep.utils.prefs.load_prefs', return_value={}):
             interactive_mode()
         
         assert file_select.ask.called
@@ -355,7 +370,7 @@ class TestExecuteArgs:
         result = execute_args(None)
         assert result is True
     
-    @patch('voxgrep.cli.sphinx.transcribe')
+    @patch('voxgrep.formats.sphinx.transcribe')
     def test_execute_args_sphinx_transcribe(self, mock_sphinx):
         """Test Sphinx transcription execution."""
         args = Namespace(
@@ -365,7 +380,7 @@ class TestExecuteArgs:
             ngrams=0
         )
         
-        with patch('voxgrep.cli.console'):
+        with patch('voxgrep.cli.ui.console'):
             execute_args(args)
         
         assert mock_sphinx.called
@@ -382,11 +397,15 @@ class TestExecuteArgs:
             prompt=None,
             language=None,
             compute_type="int8",
+            beam_size=5,
+            best_of=5,
+            vad_filter=True,
+            normalize_audio=False,
             search=None,
             ngrams=0
         )
         
-        with patch('voxgrep.cli.console'):
+        with patch('voxgrep.cli.ui.console'):
             execute_args(args)
         
         assert mock_transcribe.called
@@ -406,16 +425,20 @@ class TestExecuteArgs:
             prompt=None,
             language=None,
             compute_type="int8",
+            beam_size=5,
+            best_of=5,
+            vad_filter=True,
+            normalize_audio=False,
             search=None,
             ngrams=0
         )
         
-        with patch('voxgrep.cli.console'):
+        with patch('voxgrep.cli.ui.console'):
             execute_args(args)
         
         assert mock_transcribe.called
     
-    @patch('voxgrep.cli.get_ngrams')
+    @patch('voxgrep.cli.commands.get_ngrams')
     def test_execute_args_ngrams(self, mock_ngrams):
         """Test n-grams calculation."""
         mock_ngrams.return_value = [("hello",), ("world",)]
@@ -428,13 +451,14 @@ class TestExecuteArgs:
             search=None
         )
         
-        with patch('voxgrep.cli.console'):
+        with patch('voxgrep.cli.ui.console'):
             with patch('questionary.confirm', return_value=Mock(ask=Mock(return_value=False))):
-                execute_args(args)
+                with patch('voxgrep.utils.prefs.load_prefs', return_value={}):
+                    execute_args(args)
         
         assert mock_ngrams.called
     
-    @patch('voxgrep.voxgrep')
+    @patch('voxgrep.core.logic.voxgrep')
     def test_execute_args_search(self, mock_voxgrep):
         """Test search execution."""
         mock_voxgrep.return_value = True
@@ -458,7 +482,7 @@ class TestExecuteArgs:
             exact_match=False
         )
         
-        with patch('voxgrep.cli.console'):
+        with patch('voxgrep.cli.ui.console'):
             execute_args(args)
         
         assert mock_voxgrep.called
@@ -467,8 +491,8 @@ class TestExecuteArgs:
 class TestCLIPreferences:
     """Test CLI preferences storage and loading."""
     
-    @patch('voxgrep.prefs.save_prefs')
-    @patch('voxgrep.prefs.load_prefs')
+    @patch('voxgrep.utils.prefs.save_prefs')
+    @patch('voxgrep.utils.prefs.load_prefs')
     def test_preferences_persistence(self, mock_load, mock_save):
         """Test that preferences are saved and loaded correctly."""
         mock_load.return_value = {
@@ -478,7 +502,7 @@ class TestCLIPreferences:
         }
         
         # Verify preferences are used
-        from voxgrep.prefs import load_prefs
+        from voxgrep.utils.prefs import load_prefs
         prefs = load_prefs()
         
         assert prefs["device"] == "mlx"
@@ -500,7 +524,7 @@ class TestCLIErrorHandling:
         )
         
         with pytest.raises(SystemExit):
-            with patch('voxgrep.cli.console'):
+            with patch('voxgrep.cli.ui.console'):
                 execute_args(args)
     
     @patch('os.listdir')
@@ -513,7 +537,7 @@ class TestCLIErrorHandling:
         file_select = Mock(ask=Mock(return_value=None))
         mock_select.return_value = file_select
         
-        with patch('voxgrep.prefs.load_prefs', return_value={}):
+        with patch('voxgrep.utils.prefs.load_prefs', return_value={}):
             result = interactive_mode()
         
         assert result is None
@@ -539,18 +563,19 @@ class TestCLIErrorHandling:
         mock_text.return_value = search_input
         
         with patch('voxgrep.cli.find_transcript', return_value="test.json"):
-            with patch('voxgrep.prefs.load_prefs', return_value={}):
-                with patch('voxgrep.prefs.save_prefs'):
+            with patch('voxgrep.utils.prefs.load_prefs', return_value={}):
+                with patch('voxgrep.utils.prefs.save_prefs'):
                     interactive_mode()
 
 
 class TestCLIBanner:
     """Test CLI banner and UI elements."""
     
-    @patch('voxgrep.cli.console')
+    @patch('voxgrep.cli.ui.console')
     def test_banner_display(self, mock_console):
         """Test that banner is displayed correctly."""
-        cli.print_banner()
+        from voxgrep.cli.ui import print_banner
+        print_banner()
         assert mock_console.print.called
 
 
@@ -573,6 +598,7 @@ class TestCLIIntegration:
                 cli.main()
             assert exc_info.value.code == 0
     
+    @skip_on_windows
     def test_interactive_mode_entry(self):
         """Test entering interactive mode with no arguments."""
         test_args = ["voxgrep"]

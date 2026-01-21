@@ -3,7 +3,7 @@ import re
 import json
 import random
 from pathlib import Path
-from typing import Optional, List, Union, Iterator, Dict
+from typing import Iterator, Any
 from tqdm import tqdm
 
 import numpy as np
@@ -17,7 +17,6 @@ except ImportError:
 from ..formats import vtt, srt, sphinx
 from ..utils.config import (
     SUBTITLE_EXTENSIONS,
-    DEFAULT_SEARCH_TYPE,
     DEFAULT_SEMANTIC_MODEL,
     DEFAULT_SEMANTIC_THRESHOLD
 )
@@ -39,7 +38,7 @@ class SemanticModel:
     _device = None
 
     @classmethod
-    def get_instance(cls, model_name: Optional[str] = None):
+    def get_instance(cls, model_name: str | None = None):
         """Get or create the semantic model instance with device detection."""
         if cls._instance is None:
             if not SEMANTIC_AVAILABLE:
@@ -66,11 +65,11 @@ class SemanticModel:
 
 class TranscriptCache:
     """Singleton for caching parsed transcripts to avoid redundant I/O."""
-    _cache: Dict[str, List[dict]] = {}
-    _files_mtime: Dict[str, float] = {}
+    _cache: dict[str, list[dict]] = {}
+    _files_mtime: dict[str, float] = {}
 
     @classmethod
-    def get(cls, subfile: str) -> Optional[List[dict]]:
+    def get(cls, subfile: str) -> list[dict] | None:
         """Get transcript from cache if available and file hasn't changed."""
         if not os.path.exists(subfile):
             return None
@@ -84,7 +83,7 @@ class TranscriptCache:
         return None
 
     @classmethod
-    def set(cls, subfile: str, transcript: List[dict]):
+    def set(cls, subfile: str, transcript: list[dict]):
         """Cache the transcript and its modification time."""
         try:
             cls._cache[subfile] = transcript
@@ -99,7 +98,7 @@ class TranscriptCache:
         cls._files_mtime.clear()
 
 
-def find_transcript(videoname: str, prefer: Optional[str] = None) -> Optional[str]:
+def find_transcript(videoname: str, prefer: str | None = None) -> str | None:
     """
     Find a transcript file for a given video file.
     
@@ -153,8 +152,8 @@ def find_transcript(videoname: str, prefer: Optional[str] = None) -> Optional[st
 
 
 def parse_transcript(
-    videoname: str, prefer: Optional[str] = None
-) -> Optional[List[dict]]:
+    videoname: str, prefer: str | None = None
+) -> list[dict] | None:
     """
     Parse a transcript file for a given video.
     
@@ -204,7 +203,7 @@ def get_embeddings_path(videoname: str) -> str:
     return os.path.splitext(videoname)[0] + ".embeddings.npy"
 
 
-def get_embeddings(videoname: str, transcript: List[dict], force: bool = False) -> np.ndarray:
+def get_embeddings(videoname: str, transcript: list[dict], force: bool = False) -> np.ndarray:
     """
     Get or generate semantic embeddings for a transcript.
     """
@@ -220,7 +219,7 @@ def get_embeddings(videoname: str, transcript: List[dict], force: bool = False) 
     return embeddings
 
 
-def get_ngrams(files: Union[str, List[str]], n: int = 1, ignored_words: Optional[List[str]] = None) -> Iterator[tuple]:
+def get_ngrams(files: str | list[str], n: int = 1, ignored_words: list[str] | None = None) -> Iterator[tuple]:
     """
     Extract n-grams from transcript files.
     """
@@ -250,14 +249,14 @@ def get_ngrams(files: Union[str, List[str]], n: int = 1, ignored_words: Optional
 
 
 def search(
-    files: Union[str, List[str]],
-    query: Union[str, List[str]],
+    files: str | list[str],
+    query: str | list[str],
     search_type: str = "sentence",
-    prefer: Optional[str] = None,
+    prefer: str | None = None,
     threshold: float = DEFAULT_SEMANTIC_THRESHOLD,
     force_reindex: bool = False,
     exact_match: bool = False,
-) -> List[dict]:
+) -> list[dict]:
     """
     Search through video/audio files for a specific query.
     """
@@ -388,7 +387,8 @@ def search(
                 fragment_len = len(queries)
                 for i in range(len(words) - fragment_len + 1):
                     fragment = words[i:i+fragment_len]
-                    if all(re.search(q, w["word"], re.IGNORECASE) for q, w in zip(queries, fragment)):
+                    # Use the compiled regex pattern to respect exact_match
+                    if all(_query_regex.search(w["word"]) for w in fragment):
                         all_segments.append({
                             "file": file,
                             "start": fragment[0]["start"],

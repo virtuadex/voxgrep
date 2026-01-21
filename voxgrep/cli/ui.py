@@ -8,7 +8,7 @@ banners, tables, panels, and other visual elements.
 import sys
 import subprocess
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any
 
 from rich.console import Console
 from rich.table import Table
@@ -38,7 +38,7 @@ def print_banner() -> None:
     console.print()
 
 
-def print_ngrams_table(ngrams: List[Tuple[tuple, int]], filtered: bool, n: int) -> None:
+def print_ngrams_table(ngrams: list[tuple[tuple, int]], filtered: bool, n: int) -> None:
     """
     Print a formatted table of n-grams.
     
@@ -92,7 +92,7 @@ def format_duration(seconds: float) -> str:
         return f"{hours}h {mins}m"
 
 
-def print_session_summary(stats: dict) -> None:
+def print_session_summary(stats: dict[str, Any]) -> None:
     """
     Print a detailed session summary with statistics.
     

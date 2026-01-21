@@ -10,24 +10,30 @@ import glob
 import subprocess
 import re
 import shutil
-from typing import List, Optional, Dict, Any, Tuple
+from typing import Any
 from argparse import Namespace
 
 import questionary
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
 from .ui import console, open_file, open_folder
-from ..utils.config import MEDIA_EXTENSIONS, DEFAULT_IGNORED_WORDS
+from ..utils.config import MEDIA_EXTENSIONS, DEFAULT_IGNORED_WORDS, DEFAULT_WHISPER_MODEL, DEFAULT_DEVICE
+from ..utils import mpv_utils
+from ..utils.helpers import ensure_directory_exists
 from ..utils.prefs import load_prefs, save_prefs
 from ..core.engine import find_transcript
 
 
 def check_ytdlp_available() -> bool:
     """Check if yt-dlp is available in the system."""
-    return shutil.which("yt-dlp") is not None
+    try:
+        import yt_dlp
+        return True
+    except ImportError:
+        return False
 
 
-def download_from_url(url: str, output_dir: str = ".") -> Optional[str]:
+def download_from_url(url: str, output_dir: str = ".") -> str | None:
     """
     Download video from URL using yt-dlp.
     
@@ -43,118 +49,48 @@ def download_from_url(url: str, output_dir: str = ".") -> Optional[str]:
         console.print("[dim]Install with: pip install yt-dlp[/dim]")
         return None
     
+    # Import here to avoid circular dependencies if any (though usually strictly hierarchical)
+    from ..modules.youtube import download_video
+    
     output_dir = os.path.abspath(output_dir)
-    
-    # First, get video info to show title
-    console.print(f"\n[bold cyan]Fetching video info...[/bold cyan]")
-    
-    try:
-        info_cmd = [
-            "yt-dlp",
-            "--print", "title",
-            "--print", "duration_string",
-            "--no-download",
-            url
-        ]
-        info_result = subprocess.run(
-            info_cmd, capture_output=True, text=True, timeout=30
-        )
-        
-        if info_result.returncode == 0:
-            lines = info_result.stdout.strip().split('\n')
-            title = lines[0] if lines else "Unknown"
-            duration = lines[1] if len(lines) > 1 else "Unknown"
-            console.print(f"[green]Title:[/green] {title}")
-            console.print(f"[green]Duration:[/green] {duration}")
-        
-    except (subprocess.TimeoutExpired, Exception) as e:
-        console.print(f"[yellow]Could not fetch video info: {e}[/yellow]")
-    
-    # Confirm download
-    if not questionary.confirm("Download this video?", default=True).ask():
-        return None
-    
-    # Download with progress
-    console.print(f"\n[bold yellow]Downloading...[/bold yellow]")
-    
-    cmd = [
-        "yt-dlp",
-        "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4/best",
-        "--merge-output-format", "mp4",
-        "-o", f"{output_dir}/%(title)s.%(ext)s",
-        "--print", "after_move:filepath",
-        "--progress",
-        "--newline",
-        url
-    ]
+    ensure_directory_exists(output_dir)
+
+    console.print(f"\n[bold cyan]Fetching video info from:[/bold cyan] {url}")
     
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console
-        ) as progress:
-            task = progress.add_task("Downloading", total=100)
-            
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1
+        # We'll use a custom progress hook to integrate with Rich
+        filepath = None
+        
+        with console.status(f"[bold cyan]Downloading...[/bold cyan]") as status:
+            def progress_hook(d):
+                if d['status'] == 'downloading':
+                    p = d.get('_percent_str', '').strip()
+                    eta = d.get('_eta_str', '').strip()
+                    status.update(f"[bold cyan]Downloading... {p} (ETA: {eta})[/bold cyan]")
+                elif d['status'] == 'finished':
+                    status.update("[bold green]Finalizing download...[/bold green]")
+
+            # Use the shared module function which handles subtitle configuration and merging
+            filepath = download_video(
+                url, 
+                output_template=f"{output_dir}/%(title)s.%(ext)s",
+                progress_hooks=[progress_hook],
+                quiet=True
             )
-            
-            filepath = None
-            for line in process.stdout:
-                line = line.strip()
-                
-                # Parse progress from yt-dlp output
-                if "[download]" in line and "%" in line:
-                    match = re.search(r'(\d+\.?\d*)%', line)
-                    if match:
-                        pct = float(match.group(1))
-                        progress.update(task, completed=pct)
-                
-                # Capture the final filepath (last line from --print)
-                if line and not line.startswith("[") and os.path.exists(line):
-                    filepath = line
-            
-            process.wait()
-            progress.update(task, completed=100)
-        
-        if process.returncode != 0:
-            console.print("[bold red]Download failed.[/bold red]")
-            return None
-        
-        # If filepath wasn't captured, try to find it
-        if not filepath:
-            # Look for the most recently created mp4 file
-            mp4_files = [
-                os.path.join(output_dir, f) 
-                for f in os.listdir(output_dir) 
-                if f.endswith('.mp4')
-            ]
-            if mp4_files:
-                filepath = max(mp4_files, key=os.path.getctime)
         
         if filepath and os.path.exists(filepath):
             console.print(f"[bold green]✓ Downloaded:[/bold green] {os.path.basename(filepath)}")
             return filepath
         else:
-            console.print("[bold red]Could not locate downloaded file.[/bold red]")
+            console.print("[bold red]Download reported success but file not found.[/bold red]")
             return None
             
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Download cancelled.[/yellow]")
-        return None
     except Exception as e:
-        console.print(f"[bold red]Download error:[/bold red] {e}")
+        console.print(f"\n[bold red]Download failed:[/bold red] {e}")
         return None
 
 
-def select_input_files() -> Optional[List[str]]:
+def select_input_files() -> list[str] | None:
     """
     Interactive file selection workflow with URL download support.
     
@@ -242,7 +178,7 @@ def select_input_files() -> Optional[List[str]]:
     return input_files if input_files else None
 
 
-def check_transcripts(input_files: List[str]) -> tuple[bool, List[str]]:
+def check_transcripts(input_files: list[str]) -> tuple[bool, list[str]]:
     """
     Check which files are missing transcripts.
     
@@ -268,7 +204,7 @@ def check_transcripts(input_files: List[str]) -> tuple[bool, List[str]]:
     return should_transcribe, missing_transcripts
 
 
-def configure_transcription(args: Namespace, prefs: Dict[str, Any]) -> None:
+def configure_transcription(args: Namespace, prefs: dict[str, Any]) -> None:
     """
     Configure transcription settings interactively.
     
@@ -276,7 +212,6 @@ def configure_transcription(args: Namespace, prefs: Dict[str, Any]) -> None:
         args: Namespace object to update
         prefs: Preferences dictionary
     """
-    from ..utils.config import DEFAULT_WHISPER_MODEL, DEFAULT_DEVICE
     
     args.device = questionary.select(
         "Transcription Device", 
@@ -376,7 +311,7 @@ def configure_transcription(args: Namespace, prefs: Dict[str, Any]) -> None:
 
 
 
-def settings_menu(prefs: Dict[str, Any]) -> tuple[List[str], bool]:
+def settings_menu(prefs: dict[str, Any]) -> tuple[list[str], bool]:
     """
     Interactive settings menu for ignored words and filters.
     
@@ -477,8 +412,13 @@ def search_settings_menu(args: Namespace) -> None:
         default=args.randomize
     ).ask()
 
+    args.burn_in_subtitles = questionary.confirm(
+        "Burn-in Subtitles in output supercut?",
+        default=getattr(args, 'burn_in_subtitles', False)
+    ).ask()
 
-def get_output_filename(search_terms: List[str], default_prefix: str = "supercut") -> str:
+
+def get_output_filename(search_terms: list[str], default_prefix: str = "supercut") -> str:
     """
     Get output filename from user, with smart default based on search terms.
     
@@ -489,12 +429,22 @@ def get_output_filename(search_terms: List[str], default_prefix: str = "supercut
     Returns:
         Output filename with .mp4 extension
     """
+    MAX_FILENAME_LENGTH = 100  # Reasonable limit for filenames
+    
     default_out = default_prefix
     if search_terms:
+        # Join all search terms with '+'
+        combined_terms = "+".join(search_terms)
+        # Sanitize: keep only alphanumeric, spaces, hyphens, underscores, and plus signs
         safe_term = "".join([
-            c if c.isalnum() or c in (' ', '-', '_') else '' 
-            for c in search_terms[0]
-        ]).strip().replace(' ', '_')
+            c if c.isalnum() or c in (' ', '-', '_', '+') else '' 
+            for c in combined_terms
+        ]).strip().replace(' ', '+')
+        
+        # Truncate if too long
+        if safe_term and len(safe_term) > MAX_FILENAME_LENGTH:
+            safe_term = safe_term[:MAX_FILENAME_LENGTH].rstrip('+')
+        
         if safe_term:
             default_out = safe_term
     
@@ -509,3 +459,185 @@ def get_output_filename(search_terms: List[str], default_prefix: str = "supercut
         out_name += ".mp4"
     
     return out_name
+
+
+def _delete_files(files: list[str], current_selection: list[str]) -> int:
+    """
+    Helper to delete files and their transcripts, updating the selection list.
+    
+    Args:
+        files: List of files to delete
+        current_selection: The active selection list to update (remove deleted files from)
+
+    Returns:
+        Number of files successfully deleted
+    """
+    deleted_count = 0
+    # Copy file list to avoid modification valid issues if passing current_selection itself
+    # although we iterate over 'files', if 'files' IS 'current_selection', we need to be careful.
+    # But current_selection is only modified, not iterated here.
+    # The caller manages iteration safely.
+
+    for f in files:
+        try:
+            # Delete the video file
+            if os.path.exists(f):
+                os.remove(f)
+            
+            # Delete associated transcript
+            transcript_path = find_transcript(f)
+            if transcript_path and os.path.exists(transcript_path):
+                os.remove(transcript_path)
+                console.print(f"[dim]  └─ Deleted transcript: {os.path.basename(transcript_path)}[/dim]")
+            
+            # Remove from selection list
+            if f in current_selection:
+                current_selection.remove(f)
+            
+            deleted_count += 1
+            console.print(f"[green]Deleted: {os.path.basename(f)}[/green]")
+        except OSError as e:
+            console.print(f"[red]Failed to delete {os.path.basename(f)}: {e}[/red]")
+            
+    return deleted_count
+
+
+def manage_files_menu(input_files: list[str]) -> list[str]:
+    """
+    Interactive menu to manage selected files (Action -> File Selection).
+    Allows bulk actions on multiple files.
+    
+    Args:
+        input_files: List of absolute file paths
+        
+    Returns:
+        Updated list of file paths
+    """
+    current_files = input_files.copy()
+    
+    while True:
+        if not current_files:
+            console.print("[yellow]No files remaining in selection.[/yellow]")
+            return []
+
+        console.print("\n[bold]Current Selection:[/bold]")
+        for i, f in enumerate(current_files, 1):
+            name = os.path.basename(f)
+            console.print(f"  {i}. {name} [dim]({f})[/dim]")
+        
+        # Action First Menu
+        action = questionary.select(
+            "What do you want to do with these files?",
+            choices=[
+                "Back to Main Menu",
+                questionary.Separator(),
+                "Unselect Files (Bulk selection)",
+                "Delete Files (Bulk selection from disk)",
+                "Unselect ALL Files (Immediate)",
+                "Delete ALL Files (Immediate Permanent)",
+                questionary.Separator(),
+                "Rename a File",
+                "Preview a File (MPV)",
+                "Reveal File in Explorer",
+                "Open Transcript",
+            ]
+        ).ask()
+        
+        if not action or action == "Back to Main Menu":
+            break
+            
+        # --- Immediate ALL Actions ---
+        if "ALL" in action:
+            if action.startswith("Unselect ALL"):
+                if questionary.confirm(f"Remove ALL {len(current_files)} files from selection?").ask():
+                    current_files.clear()
+                    console.print("[green]All files removed from selection.[/green]")
+                    return []
+            
+            elif action.startswith("Delete ALL"):
+                console.print(f"[bold red]WARNING: This will PERMANENTLY DELETE ALL {len(current_files)} files from disk![/bold red]")
+                if questionary.confirm(f"Are you sure you want to DELETE ALL {len(current_files)} files?").ask():
+                    # We pass a copy because _delete_files helps modify current_files
+                    _delete_files(current_files.copy(), current_files)
+                    return current_files
+        
+        # --- Bulk Actions (Selection) ---
+        elif "Bulk" in action:
+            # Create choices for checkbox
+            file_choices = [
+                questionary.Choice(os.path.basename(f), value=f) 
+                for f in current_files
+            ]
+            
+            selected_files = questionary.checkbox(
+                f"Select files to {action.split(' ')[0].lower()}:",
+                choices=file_choices
+            ).ask()
+            
+            if not selected_files:
+                continue
+                
+            if action.startswith("Unselect"):
+                if questionary.confirm(f"Remove {len(selected_files)} files from list?").ask():
+                    for f in selected_files:
+                        if f in current_files:
+                            current_files.remove(f)
+                    console.print(f"[green]Removed {len(selected_files)} files from selection.[/green]")
+
+            elif action.startswith("Delete"):
+                console.print(f"[bold red]WARNING: This will PERMANENTLY DELETE {len(selected_files)} files from disk![/bold red]")
+                if questionary.confirm(f"Are you sure you want to DELETE {len(selected_files)} files?").ask():
+                    _delete_files(selected_files, current_files)
+    
+        # --- Single Selection Actions ---
+        else:
+             # Reuse single selection logic
+            target_file = None
+            if len(current_files) == 1:
+                target_file = current_files[0]
+            else:
+                 target_file = questionary.select(
+                    "Select file:",
+                    choices=[questionary.Choice(os.path.basename(f), value=f) for f in current_files]
+                ).ask()
+            
+            if not target_file:
+                continue
+                
+            if action.startswith("Rename"):
+                new_name = questionary.text("New filename:", default=os.path.basename(target_file)).ask()
+                if new_name and new_name != os.path.basename(target_file):
+                    dir_path = os.path.dirname(target_file)
+                    new_path = os.path.join(dir_path, new_name)
+                    if os.path.exists(new_path):
+                        console.print(f"[red]Error: '{new_name}' already exists.[/red]")
+                    else:
+                        try:
+                            os.rename(target_file, new_path)
+                            idx = current_files.index(target_file)
+                            current_files[idx] = new_path
+                            console.print(f"[green]Renamed to '{new_name}'[/green]")
+                        except OSError as e:
+                            console.print(f"[red]Rename failed: {e}[/red]")
+
+            elif action.startswith("Preview"):
+                 if mpv_utils.check_mpv_available():
+                     success = mpv_utils.launch_mpv_file(target_file)
+                     if not success:
+                         console.print("[red]Failed to launch MPV. Check log for details.[/red]")
+                 else:
+                     console.print("[yellow]MPV not found. Cannot preview.[/yellow]")
+                     console.print(mpv_utils.get_mpv_install_instructions())
+
+            elif action.startswith("Reveal"):
+                open_folder(os.path.dirname(target_file))
+
+            elif action.startswith("Open Transcript"):
+                t_path = find_transcript(target_file)
+                if t_path and os.path.exists(t_path):
+                    open_file(t_path)
+                    console.print(f"[green]Opened transcript: {os.path.basename(t_path)}[/green]")
+                else:
+                    console.print("[yellow]No transcript found for this file.[/yellow]")
+
+    return current_files

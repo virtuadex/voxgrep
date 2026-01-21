@@ -111,6 +111,7 @@ def voxgrep(
     exact_match: bool = False,
     console: Optional[Console] = None,
     progress_callback: Optional[Callable[[float], None]] = None,
+    burn_in_subtitles: bool = False,
 ) -> Union[bool, Dict[str, Any]]:
     """
     Main entry point for creating a supercut based on a search query.
@@ -142,7 +143,11 @@ def voxgrep(
 
     # Handle default padding
     if padding is None:
-        if search_type in ["fragment", "mash"]:
+        if search_type == "mash":
+            # Apply micro-padding for word-level cuts to sound more natural
+            from ..utils.config import MASH_PADDING
+            padding = MASH_PADDING
+        elif search_type == "fragment":
             padding = DEFAULT_PADDING
         else:
             padding = 0
@@ -164,6 +169,9 @@ def voxgrep(
         supercut_duration = sum(s['end'] - s['start'] for s in segments)
         
         if console:
+            from rich.text import Text
+            import re
+            
             table = Table(title=f"Search Results ({len(segments)} segments)", box=box.ROUNDED)
             table.add_column("File", style="cyan")
             table.add_column("Start", justify="right", style="green")
@@ -171,11 +179,27 @@ def voxgrep(
             table.add_column("Content", style="white")
 
             for s in segments:
+                # Highlight search terms in content
+                content_text = Text(s['content'])
+                if query:
+                    for q in query:
+                        # Create pattern based on exact_match setting
+                        if exact_match:
+                            pattern = r'\b' + re.escape(q) + r'\b'
+                        else:
+                            pattern = re.escape(q)
+                        
+                        # Find and highlight all matches
+                        for match in re.finditer(pattern, s['content'], re.IGNORECASE):
+                            start_pos = match.start()
+                            end_pos = match.end()
+                            content_text.stylize("bold yellow on blue", start_pos, end_pos)
+                
                 table.add_row(
                     os.path.basename(s['file']),
                     f"{s['start']:.2f}s",
                     f"{s['end']:.2f}s",
-                    s['content']
+                    content_text
                 )
             console.print(table)
         else:
@@ -255,7 +279,7 @@ def voxgrep(
 
     # Export Logic
     if export_clips:
-        exporter.export_individual_clips(segments, output, progress_callback=progress_callback)
+        exporter.export_individual_clips(segments, output, progress_callback=progress_callback, burn_in_subtitles=burn_in_subtitles)
     elif output.endswith(".m3u"):
         exporter.export_m3u(segments, output)
     elif output.endswith(".mpv.edl"):
@@ -265,9 +289,9 @@ def voxgrep(
     else:
         # Create full supercut
         if len(segments) > BATCH_SIZE:
-            exporter.create_supercut_in_batches(segments, output, progress_callback=progress_callback)
+            exporter.create_supercut_in_batches(segments, output, progress_callback=progress_callback, burn_in_subtitles=burn_in_subtitles)
         else:
-            exporter.create_supercut(segments, output, progress_callback=progress_callback)
+            exporter.create_supercut(segments, output, progress_callback=progress_callback, burn_in_subtitles=burn_in_subtitles)
 
     # Write WebVTT if requested
     if write_vtt:

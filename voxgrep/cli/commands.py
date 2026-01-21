@@ -14,13 +14,17 @@ from rich.progress import (
     Progress, SpinnerColumn, TextColumn, BarColumn, 
     TaskProgressColumn, TimeRemainingColumn
 )
+import logging
 
 from .ui import console, print_ngrams_table, print_success_panel
+from ..utils.helpers import setup_logger
 from ..formats import sphinx
 from ..core import logic as voxgrep
 from ..core.engine import get_ngrams
 from ..utils.prefs import load_prefs
 from ..utils.config import DEFAULT_IGNORED_WORDS
+
+logger = setup_logger(__name__)
 
 
 def run_transcription_sphinx(input_files: List[str]) -> None:
@@ -39,7 +43,11 @@ def run_transcription_sphinx(input_files: List[str]) -> None:
     ) as progress:
         task = progress.add_task("Transcribing (Sphinx)...", total=len(input_files))
         for f in input_files:
-            sphinx.transcribe(f)
+            try:
+                sphinx.transcribe(f)
+            except Exception as e:
+                console.print(f"[red]✗ Failed to transcribe {os.path.basename(f)}: {e}[/red]")
+                logger.error(f"Sphinx transcription failed for {f}: {e}")
             progress.advance(task)
 
 
@@ -53,7 +61,8 @@ def run_transcription_whisper(
     beam_size: int = 5,
     best_of: int = 5,
     vad_filter: bool = True,
-    normalize_audio: bool = False
+    normalize_audio: bool = False,
+    translate: bool = False
 ) -> None:
     """
     Run Whisper transcription with progress bar.
@@ -88,6 +97,7 @@ def run_transcription_whisper(
         msg += fmt_diff("beam_size", "Beam Size", 5)
         msg += fmt_diff("vad_filter", "VAD Filter", True)
         msg += fmt_diff("has_prompt", "Vocabulary Hint", False)
+        msg += fmt_diff("translate", "Translate", False)
         
         console.print(msg)
         console.print()
@@ -115,19 +125,24 @@ def run_transcription_whisper(
                 for i, f in enumerate(input_files):
                     filename = os.path.basename(f)
                     status.update(f"[bold blue]Transcribing {filename} ({i+1}/{len(input_files)}) using MLX...[/bold blue]")
-                    transcribe.transcribe(
-                        f, 
-                        model_name=model, 
-                        prompt=prompt, 
-                        language=language, 
-                        device=device, 
-                        compute_type=compute_type,
-                        on_existing_transcript=ask_about_existing_transcript,
-                        beam_size=beam_size,
-                        best_of=best_of,
-                        vad_filter=vad_filter,
-                        normalize_audio=normalize_audio
-                    )
+                    try:
+                        transcribe.transcribe(
+                            f, 
+                            model_name=model, 
+                            prompt=prompt, 
+                            language=language, 
+                            device=device, 
+                            compute_type=compute_type,
+                            on_existing_transcript=ask_about_existing_transcript,
+                            beam_size=beam_size,
+                            best_of=best_of,
+                            vad_filter=vad_filter,
+                            normalize_audio=normalize_audio,
+                            translate=translate
+                        )
+                    except Exception as e:
+                        console.print(f"\n[red]✗ Failed to transcribe {filename}: {e}[/red]")
+                        logger.error(f"MLX transcription failed for {f}: {e}")
         except KeyboardInterrupt:
             console.print("\n[yellow]⚠ Transcription cancelled by user. Partial results have been saved.[/yellow]")
             return
@@ -143,16 +158,24 @@ def run_transcription_whisper(
             ) as progress:
                 for i, f in enumerate(input_files):
                     filename = os.path.basename(f)
-                    task = progress.add_task(
-                        f"[cyan]Transcribing {filename} ({i+1}/{len(input_files)})...", 
-                        total=100
-                    )
+                    original_desc = f"[cyan]Transcribing {filename} ({i+1}/{len(input_files)})..."
+                    task = progress.add_task(original_desc, total=100)
                     
                     def update_progress(current_sec, total_sec, text: Optional[str] = None):
                         """Callback to update Rich progress bar"""
+                        # Special handling for normalization phase
+                        if text and "Normalizing audio" in text:
+                            progress.update(task, description=f"[yellow]⧖ {text}[/yellow]", completed=0)
+                            return
+                            
                         percent = (current_sec / total_sec) * 100 if total_sec > 0 else 0
+                        
+                        # Revert description if we actually have progress
+                        if percent > 0:
+                             progress.update(task, description=original_desc)
+                             
                         progress.update(task, completed=percent)
-                        if text:
+                        if text and "Normalizing audio" not in text:
                             # Print the text above the progress bar (scrolling ticker)
                             progress.console.print(f"[dim grey50]{text}[/dim grey50]")
                     
@@ -169,7 +192,8 @@ def run_transcription_whisper(
                             beam_size=beam_size,
                             best_of=best_of,
                             vad_filter=vad_filter,
-                            normalize_audio=normalize_audio
+                            normalize_audio=normalize_audio,
+                            translate=translate
                         )
                     except Exception as e:
                         console.print(f"\n[red]✗ Failed to transcribe {filename}: {e}[/red]")
@@ -230,7 +254,8 @@ def run_voxgrep_search(
     write_vtt: bool = False,
     preview: bool = False,
     exact_match: bool = False,
-    progress_callback = None
+    progress_callback = None,
+    burn_in_subtitles: bool = False
 ) -> bool:
     """
     Execute voxgrep search with optional progress tracking.
@@ -270,7 +295,8 @@ def run_voxgrep_search(
             write_vtt=write_vtt,
             preview=preview,
             exact_match=exact_match,
-            console=console
+            console=console,
+            burn_in_subtitles=burn_in_subtitles
         )
     else:
         # Use progress bar for actual processing
@@ -303,7 +329,8 @@ def run_voxgrep_search(
                 preview=preview,
                 exact_match=exact_match,
                 console=console,
-                progress_callback=progress_callback or update_progress
+                progress_callback=progress_callback or update_progress,
+                burn_in_subtitles=burn_in_subtitles
             )
             
             if result and isinstance(result, bool):
@@ -345,7 +372,8 @@ def execute_args(args: Namespace) -> bool:
             args.beam_size,
             args.best_of,
             args.vad_filter,
-            args.normalize_audio
+            args.normalize_audio,
+            translate=getattr(args, 'translate', False)
         )
         if not args.search and args.ngrams == 0:
             return True
@@ -387,5 +415,6 @@ def execute_args(args: Namespace) -> bool:
         export_clips=args.export_clips,
         write_vtt=args.write_vtt,
         preview=args.preview,
-        exact_match=args.exact_match
+        exact_match=args.exact_match,
+        burn_in_subtitles=getattr(args, 'burn_in_subtitles', False)
     )

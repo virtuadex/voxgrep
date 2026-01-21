@@ -6,7 +6,7 @@ calculation, selection, filtering, and search operations.
 """
 
 from argparse import Namespace
-from typing import List, Set, Tuple, Optional
+from typing import Optional
 
 import questionary
 
@@ -14,13 +14,12 @@ from .ui import console, print_session_summary
 
 from .workflows import get_output_filename, post_export_menu
 from .commands import calculate_ngrams, run_voxgrep_search
-from ..utils.config import DEFAULT_SEARCH_TYPE
 
 
 def select_ngrams_single_mode(
-    most_common: List[Tuple[tuple, int]], 
-    selected_ngrams_set: Set[str]
-) -> Tuple[Optional[str], Set[str]]:
+    most_common: list[tuple[tuple, int]], 
+    selected_ngrams_set: set[str]
+) -> tuple[str | None, set[str], str | None]:
     """
     Single-select mode for n-gram selection.
     
@@ -29,7 +28,7 @@ def select_ngrams_single_mode(
         selected_ngrams_set: Currently selected n-grams
         
     Returns:
-        Tuple of (action, updated_selection)
+        Tuple of (action, updated_selection, word_to_ignore)
     """
     choices = []
     choices.append(questionary.Choice(
@@ -42,6 +41,11 @@ def select_ngrams_single_mode(
             f"  [!] Use Current Selection ({len(selected_ngrams_set)} items)", 
             value="__USE_EXISTING__"
         ))
+    
+    choices.append(questionary.Choice(
+        "[🚫] Add Word to Ignored List (Filter Out)",
+        value="__IGNORE_WORD__"
+    ))
     
     choices.append(questionary.Separator())
     
@@ -62,22 +66,25 @@ def select_ngrams_single_mode(
     ).ask()
     
     if selection is None or selection == "__EXIT__":
-        return "__EXIT__", selected_ngrams_set
+        return "__EXIT__", selected_ngrams_set, None
         
     if selection == "__SWITCH_MULTI__":
-        return "__SWITCH_MULTI__", selected_ngrams_set
+        return "__SWITCH_MULTI__", selected_ngrams_set, None
         
     if selection == "__USE_EXISTING__":
-        return "__DONE__", selected_ngrams_set
+        return "__DONE__", selected_ngrams_set, None
+    
+    if selection == "__IGNORE_WORD__":
+        return "__IGNORE_WORD__", selected_ngrams_set, None
 
     # Immediate selection
-    return "__DONE__", {selection}
+    return "__DONE__", {selection}, None
 
 
 def select_ngrams_multi_mode(
-    most_common: List[Tuple[tuple, int]], 
-    selected_ngrams_set: Set[str]
-) -> Tuple[Optional[str], Set[str]]:
+    most_common: list[tuple[tuple, int]], 
+    selected_ngrams_set: set[str]
+) -> tuple[str | None, set[str], str | None]:
     """
     Multi-select mode for n-gram selection.
     
@@ -86,7 +93,7 @@ def select_ngrams_multi_mode(
         selected_ngrams_set: Currently selected n-grams
         
     Returns:
-        Tuple of (action, updated_selection)
+        Tuple of (action, updated_selection, word_to_ignore)
     """
     checkbox_choices = []
     
@@ -108,7 +115,7 @@ def select_ngrams_multi_mode(
     ).ask()
     
     if page_selection is None:
-        return "__EXIT__", selected_ngrams_set
+        return "__EXIT__", selected_ngrams_set, None
         
     # Handle control options
     if "__SWITCH_SINGLE__" in page_selection:
@@ -116,7 +123,7 @@ def select_ngrams_multi_mode(
         for val in page_selection:
             if val and not val.startswith("__"):
                 selected_ngrams_set.add(val)
-        return "__SWITCH_SINGLE__", selected_ngrams_set
+        return "__SWITCH_SINGLE__", selected_ngrams_set, None
         
     # Extract valid selections
     new_set = set()
@@ -127,12 +134,12 @@ def select_ngrams_multi_mode(
     if not new_set and "__DONE__" not in page_selection:
         # User hit enter without selecting anything
         console.print("[yellow]No n-grams selected.[/yellow]")
-        return "__CONTINUE__", selected_ngrams_set
+        return "__CONTINUE__", selected_ngrams_set, None
     
-    return "__DONE__", new_set
+    return "__DONE__", new_set, None
 
 
-def ngram_selection_phase(most_common: List[Tuple[tuple, int]]) -> Optional[List[str]]:
+def ngram_selection_phase(most_common: list[tuple[tuple, int]]) -> list[str] | tuple[str, str] | None:
     """
     Handle the interactive n-gram selection phase.
     
@@ -140,7 +147,7 @@ def ngram_selection_phase(most_common: List[Tuple[tuple, int]]) -> Optional[List
         most_common: List of (ngram, count) tuples
         
     Returns:
-        List of selected n-grams, or None if cancelled
+        List of selected n-grams, tuple of ("__IGNORE__", word) if ignoring, or None if cancelled
     """
     if not most_common:
         console.print("[yellow]No n-grams found.[/yellow]")
@@ -148,14 +155,14 @@ def ngram_selection_phase(most_common: List[Tuple[tuple, int]]) -> Optional[List
     
     console.print("\n[green]Select n-gram to search (or switch to Multi-Select):[/green]")
     
-    selected_ngrams_set: Set[str] = set()
+    selected_ngrams_set: set[str] = set()
     mode = "single"
     
     while True:
         if mode == "single":
-            action, selected_ngrams_set = select_ngrams_single_mode(most_common, selected_ngrams_set)
+            action, selected_ngrams_set, word_to_ignore = select_ngrams_single_mode(most_common, selected_ngrams_set)
         else:
-            action, selected_ngrams_set = select_ngrams_multi_mode(most_common, selected_ngrams_set)
+            action, selected_ngrams_set, word_to_ignore = select_ngrams_multi_mode(most_common, selected_ngrams_set)
         
         if action == "__EXIT__":
             return None
@@ -163,13 +170,44 @@ def ngram_selection_phase(most_common: List[Tuple[tuple, int]]) -> Optional[List
             mode = "multi"
         elif action == "__SWITCH_SINGLE__":
             mode = "single"
+        elif action == "__IGNORE_WORD__":
+            # Prompt user to type or select a word to ignore
+            import questionary
+            from ..utils.prefs import load_prefs, save_prefs
+            
+            # Build list of all unique words from n-grams
+            all_words = set()
+            for ngram, _ in most_common:
+                for word in ngram:
+                    all_words.add(word)
+            
+            word_to_ignore = questionary.autocomplete(
+                "Enter word to add to ignored list:",
+                choices=sorted(all_words),
+                style=questionary.Style([('highlighted', 'fg:cyan bold')])
+            ).ask()
+            
+            if word_to_ignore:
+                # Add to preferences
+                prefs = load_prefs()
+                ignored_words = prefs.get("ignored_words", [])
+                if word_to_ignore.lower() not in [w.lower() for w in ignored_words]:
+                    ignored_words.append(word_to_ignore.lower())
+                    prefs["ignored_words"] = ignored_words
+                    save_prefs(prefs)
+                    console.print(f"[green]✓ Added '{word_to_ignore}' to ignored words list.[/green]")
+                    # Signal to refresh n-grams
+                    return ("__REFRESH__", word_to_ignore)
+                else:
+                    console.print(f"[yellow]'{word_to_ignore}' is already in the ignored list.[/yellow]")
+            continue
         elif action == "__DONE__":
             return list(selected_ngrams_set)
         elif action == "__CONTINUE__":
             continue
 
 
-def ngram_action_phase(args: Namespace, selected_ngrams: List[str]) -> bool:
+def ngram_action_phase(args: Namespace, selected_ngrams: list[str]) -> bool:
     """
     Handle the n-gram action phase (demo, preview, export).
     
@@ -192,7 +230,8 @@ def ngram_action_phase(args: Namespace, selected_ngrams: List[str]) -> bool:
     search_args.sync = 0
     search_args.export_clips = False
     search_args.write_vtt = False
-    search_args.exact_match = False
+    search_args.exact_match = getattr(args, 'exact_match', False)
+    search_args.burn_in_subtitles = getattr(args, 'burn_in_subtitles', False)
     search_args.ignored_words = getattr(args, 'ignored_words', [])
     search_args.use_ignored_words = getattr(args, 'use_ignored_words', True)
     
@@ -215,7 +254,8 @@ def ngram_action_phase(args: Namespace, selected_ngrams: List[str]) -> bool:
             export_clips=search_args.export_clips,
             write_vtt=search_args.write_vtt,
             preview=False,
-            exact_match=search_args.exact_match
+            exact_match=search_args.exact_match,
+            burn_in_subtitles=search_args.burn_in_subtitles
         )
         if isinstance(result, dict):
             print_session_summary(result)
@@ -268,7 +308,17 @@ def ngram_action_phase(args: Namespace, selected_ngrams: List[str]) -> bool:
                 default=search_args.randomize
             ).ask()
             
-            console.print(f"[green]Settings updated. Search Type: {search_args.searchtype}[/green]")
+            search_args.exact_match = questionary.confirm(
+                "Exact Match (Whole Words Only)?",
+                default=search_args.exact_match
+            ).ask()
+            
+            search_args.burn_in_subtitles = questionary.confirm(
+                "Burn-in Subtitles in output?",
+                default=search_args.burn_in_subtitles
+            ).ask()
+            
+            console.print(f"[green]Settings updated. Search Type: {search_args.searchtype}, Exact Match: {search_args.exact_match}, Burn-in: {search_args.burn_in_subtitles}[/green]")
             continue
 
         if action == "preview":
@@ -287,7 +337,8 @@ def ngram_action_phase(args: Namespace, selected_ngrams: List[str]) -> bool:
                 export_clips=search_args.export_clips,
                 write_vtt=search_args.write_vtt,
                 preview=True,
-                exact_match=search_args.exact_match
+                exact_match=search_args.exact_match,
+                burn_in_subtitles=search_args.burn_in_subtitles
             )
             if isinstance(result, dict):
                 print_session_summary(result)
@@ -312,7 +363,8 @@ def ngram_action_phase(args: Namespace, selected_ngrams: List[str]) -> bool:
                 export_clips=search_args.export_clips,
                 write_vtt=search_args.write_vtt,
                 preview=False,
-                exact_match=search_args.exact_match
+                exact_match=search_args.exact_match,
+                burn_in_subtitles=search_args.burn_in_subtitles
             )
             
             if isinstance(result, dict) and result.get("success"):
@@ -347,6 +399,9 @@ def interactive_ngrams_workflow(args: Namespace) -> None:
         getattr(args, 'use_ignored_words', True)
     )
     
+    if not most_common:
+        return
+    
     from .ui import print_ngrams_table
     print_ngrams_table(most_common, filtered, args.ngrams)
     
@@ -356,6 +411,22 @@ def interactive_ngrams_workflow(args: Namespace) -> None:
         
         if not selected_ngrams:
             return  # User cancelled or no selection
+        
+        # Check if user wants to refresh (added word to ignore list)
+        if isinstance(selected_ngrams, tuple) and selected_ngrams[0] == "__REFRESH__":
+            console.print("\n[cyan]Recalculating n-grams with updated filter...[/cyan]")
+            # Recalculate with updated ignored words
+            most_common, filtered = calculate_ngrams(
+                args.inputfile,
+                args.ngrams,
+                None,  # Load from prefs
+                True   # Use filter
+            )
+            if not most_common:
+                console.print("[yellow]No n-grams remaining after filtering.[/yellow]")
+                return
+            print_ngrams_table(most_common, filtered, args.ngrams)
+            continue  # Go back to selection
         
         # Enter action phase
         back_to_selection = ngram_action_phase(args, selected_ngrams)

@@ -6,7 +6,7 @@ and executing VoxGrep tasks through a menu-driven interface.
 """
 
 from argparse import Namespace
-from typing import List, Optional
+from typing import Any
 
 import questionary
 
@@ -15,9 +15,9 @@ from .ui import console, print_session_summary
 from .workflows import (
     select_input_files, check_transcripts, configure_transcription,
     settings_menu, post_export_menu, search_settings_menu,
-    get_output_filename
+    get_output_filename, manage_files_menu
 )
-from .commands import run_voxgrep_search, execute_args
+from .commands import run_voxgrep_search, execute_args, run_transcription_whisper
 from .ngrams import interactive_ngrams_workflow
 from ..utils.config import (
     DEFAULT_WHISPER_MODEL, 
@@ -28,7 +28,7 @@ from ..utils.config import (
 from ..utils.prefs import load_prefs, save_prefs
 
 
-def create_default_args(input_files: List[str], prefs: dict) -> Namespace:
+def create_default_args(input_files: list[str], prefs: dict[str, Any]) -> Namespace:
     """
     Create a Namespace with default arguments.
     
@@ -49,6 +49,7 @@ def create_default_args(input_files: List[str], prefs: dict) -> Namespace:
     args.maxclips = 0
     args.randomize = False
     args.exact_match = False
+    args.burn_in_subtitles = False
     
     # Ignored words settings
     args.ignored_words = prefs.get("ignored_words", DEFAULT_IGNORED_WORDS)
@@ -134,7 +135,8 @@ def handle_search_workflow(args: Namespace) -> bool:
                 export_clips=args.export_clips,
                 write_vtt=args.write_vtt,
                 preview=True,
-                exact_match=args.exact_match
+                exact_match=args.exact_match,
+                burn_in_subtitles=args.burn_in_subtitles
             )
             
             if isinstance(result, dict):
@@ -165,7 +167,8 @@ def handle_search_workflow(args: Namespace) -> bool:
                 export_clips=args.export_clips,
                 write_vtt=args.write_vtt,
                 preview=False,
-                exact_match=args.exact_match
+                exact_match=args.exact_match,
+                burn_in_subtitles=args.burn_in_subtitles
             )
             
             if isinstance(result, dict) and result.get("success"):
@@ -188,7 +191,7 @@ def handle_search_workflow(args: Namespace) -> bool:
     return True
 
 
-def get_default_output_name(search_terms: Optional[List[str]]) -> str:
+def get_default_output_name(search_terms: list[str] | None) -> str:
     """Get a safe default output name from search terms."""
     default_out = "supercut"
     if search_terms:
@@ -229,8 +232,9 @@ def interactive_mode() -> None:
                 questionary.Choice("Transcription Only", value="transcribe"),
                 questionary.Choice("Calculate N-grams", value="ngrams"),
                 questionary.Separator(),
+                questionary.Choice("Manage Selected Files (Rename, Remove...)", value="manage_files"),
                 questionary.Choice("Settings (Ignored Words, etc.)", value="settings_menu"),
-                questionary.Choice("Change Files", value="change_files"),
+                questionary.Choice("Change/Reselect Files", value="change_files"),
                 questionary.Choice("Exit", value="exit")
             ],
             default="search"
@@ -241,6 +245,13 @@ def interactive_mode() -> None:
             
         if task == "change_files":
             return interactive_mode()  # Restart with new files
+
+        if task == "manage_files":
+            input_files = manage_files_menu(input_files)
+            if not input_files:
+                console.print("[yellow]All files removed. Please select files again.[/yellow]")
+                return interactive_mode()
+            continue
 
         if task == "settings_menu":
             ignored_words, use_ignored_words = settings_menu(prefs)
@@ -272,7 +283,6 @@ def interactive_mode() -> None:
         try:
             # Execute transcription if requested/needed (before task-specific workflows)
             if args.transcribe:
-                from .commands import run_transcription_whisper
                 run_transcription_whisper(
                     args.inputfile,
                     args.model,
@@ -292,6 +302,12 @@ def interactive_mode() -> None:
                 if not handle_search_workflow(args):
                     break
             elif task == "ngrams":
+                # Check for missing transcripts again to be safe, though handled above
+                _, missing_files = check_transcripts(args.inputfile)
+                if missing_files:
+                     console.print("[red]Cannot proceed with n-grams: Transcripts missing.[/red]")
+                     continue
+                        
                 args.ngrams = int(questionary.text("Enter N for N-grams", default="1").ask())
                 interactive_ngrams_workflow(args)
                 console.print("\n[dim]--- Task Complete ---[/dim]\n")
@@ -319,6 +335,7 @@ def interactive_mode() -> None:
             "preview": args.preview,
             "demo": args.demo,
             "ignored_words": args.ignored_words,
-            "use_ignored_words": args.use_ignored_words
+            "use_ignored_words": args.use_ignored_words,
+            "burn_in_subtitles": args.burn_in_subtitles
         })
         save_prefs(prefs)

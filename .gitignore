@@ -16,3 +16,7 @@ dist
 .python-version
 voxgrep_library.db
 *.log
+*.exe
+.voxgrep_cache/
+2.0.0
+*.vtt

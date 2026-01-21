@@ -4,7 +4,7 @@ System, Health, and Configuration Routes
 import sys
 import os
 import subprocess
-from typing import Optional, List
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 
 from sqlmodel import Session
@@ -70,9 +70,9 @@ def get_available_models():
 @router.post("/transcribe/{video_id}")
 def transcribe_video(
     video_id: int,
-    model: Optional[str] = None,
-    backend: Optional[str] = None,
-    language: Optional[str] = None,
+    model: str | None = None,
+    backend: str | None = None,
+    language: str | None = None,
     force: bool = False,
     background_tasks: BackgroundTasks = None,
     session: Session = Depends(get_session)

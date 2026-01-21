@@ -2,7 +2,6 @@
 Library Management Routes
 """
 import os
-from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
@@ -50,7 +49,7 @@ def _scan_path(path: str, session: Session) -> int:
     return count
 
 
-@router.get("", response_model=List[Video])
+@router.get("", response_model=list[Video])
 def get_library(session: Session = Depends(get_session)):
     """Returns a list of all videos in the library."""
     videos = session.exec(select(Video)).all()
@@ -67,7 +66,7 @@ def get_video(video_id: int, session: Session = Depends(get_session)):
 
 
 @router.post("/scan")
-def scan_library(path: Optional[str] = None, session: Session = Depends(get_session)):
+def scan_library(path: str | None = None, session: Session = Depends(get_session)):
     """Scans a directory and adds new videos to the library."""
     target_path = path or config.downloads_dir
     added = _scan_path(target_path, session)

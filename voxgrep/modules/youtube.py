@@ -13,7 +13,8 @@ def download_video(
     format_code: str = None,
     progress_hooks: list = None,
     restrict_filenames: bool = True,
-    quiet: bool = True
+    quiet: bool = True,
+    languages: list = None
 ) -> str:
     """
     Download a video (and subtitles) from a URL using yt-dlp.
@@ -37,7 +38,7 @@ def download_video(
         'outtmpl': output_template,
         'writesubtitles': True,
         'writeautomaticsub': True,
-        'subtitleslangs': ['en', 'pt'], # prioritize english and portuguese
+        'subtitleslangs': languages if languages else ['en', 'pt'], # prioritize english and portuguese
         'ignoreerrors': True,  # Don't fail if subtitles can't be downloaded
         'quiet': quiet,
         'noprogress': True, # Always use our own progress bar or none
@@ -114,7 +115,8 @@ async def download_video_async(
     format_code: str = None,
     progress_hooks: list = None,
     restrict_filenames: bool = True,
-    quiet: bool = True
+    quiet: bool = True,
+    languages: list = None
 ) -> str:
     """
     Async wrapper for download_video. Runs the download in a thread pool.
@@ -129,6 +131,7 @@ async def download_video_async(
             format_code, 
             progress_hooks, 
             restrict_filenames,
-            quiet
+            quiet,
+            languages
         )
     )

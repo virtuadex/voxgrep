@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-import voxgrep.search_engine as search_mod
+import voxgrep.core.engine as search_mod
 
 def File(path):
     return str(Path(__file__).parent / Path("test_inputs") / Path(path))

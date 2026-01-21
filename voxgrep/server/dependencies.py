@@ -1,7 +1,6 @@
 """
 Common dependencies for VoxGrep Server routers.
 """
-from typing import Generator
 from sqlmodel import Session
 from fastapi import Depends
 

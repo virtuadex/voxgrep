@@ -1,7 +1,7 @@
 """
 Export Routes
 """
-from typing import List
+
 from fastapi import APIRouter, Depends, BackgroundTasks
 
 from ..dependencies import logger
@@ -13,7 +13,7 @@ router = APIRouter(tags=["export"])
 
 @router.post("/export")
 def export_supercut(
-    matches: List[SearchResult], 
+    matches: list[SearchResult], 
     output: str,
     transition: str = "cut",
     transition_duration: float = 0.5,

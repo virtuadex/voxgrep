@@ -68,7 +68,7 @@ class TranscriptionProvider(ABC):
     @abstractmethod
     def transcribe(
         self,
-        audio_path: str,
+        audio_path: str | Any,
         model: Optional[str] = None,
         language: Optional[str] = None,
         **kwargs
@@ -98,7 +98,7 @@ class FasterWhisperProvider(TranscriptionProvider):
     
     def transcribe(
         self,
-        audio_path: str,
+        audio_path: str | Any,
         model: Optional[str] = None,
         language: Optional[str] = None,
         device: str = DEFAULT_DEVICE,
@@ -186,7 +186,7 @@ class MLXWhisperProvider(TranscriptionProvider):
     
     def transcribe(
         self,
-        audio_path: str,
+        audio_path: str | Any,
         model: Optional[str] = None,
         language: Optional[str] = None,
         **kwargs
@@ -264,7 +264,7 @@ class OpenAIAPIProvider(TranscriptionProvider):
     
     def transcribe(
         self,
-        audio_path: str,
+        audio_path: str | Any,
         model: Optional[str] = None,
         language: Optional[str] = None,
         **kwargs
@@ -389,7 +389,7 @@ class ModelManager:
     
     def transcribe(
         self,
-        audio_path: str,
+        audio_path: str | Any,
         backend: Optional[TranscriptionBackend] = None,
         model: Optional[str] = None,
         language: Optional[str] = None,

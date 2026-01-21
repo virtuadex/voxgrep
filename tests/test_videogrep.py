@@ -30,7 +30,7 @@ def File(path):
 
 
 def test_version():
-    assert voxgrep.__version__ == "2.3.1"
+    assert voxgrep.__version__ == "3.0.0"
 
 
 def test_srts():

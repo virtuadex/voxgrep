@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def normalize_audio(
     input_file: str,
-    output_file: Optional[str] = None,
+    output_file: str | None = None,
     target_level: float = -16.0,
     cleanup: bool = True
 ) -> str:

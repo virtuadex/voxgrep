@@ -5,9 +5,10 @@ VoxGrep Environment Doctor - Diagnoses installation and environment issues.
 import sys
 import os
 import subprocess
+import shutil
 import importlib.util
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -20,11 +21,11 @@ class EnvironmentDoctor:
     """Diagnoses VoxGrep installation and environment configuration."""
     
     def __init__(self):
-        self.issues: List[str] = []
-        self.warnings: List[str] = []
-        self.successes: List[str] = []
+        self.issues: list[str] = []
+        self.warnings: list[str] = []
+        self.successes: list[str] = []
         
-    def check_python_version(self) -> Tuple[bool, str]:
+    def check_python_version(self) -> tuple[bool, str]:
         """Check if Python version meets requirements."""
         version = sys.version_info
         required_major, required_minor = 3, 10
@@ -33,7 +34,7 @@ class EnvironmentDoctor:
             return False, f"Python {version.major}.{version.minor}.{version.micro} (requires 3.10+)"
         return True, f"Python {version.major}.{version.minor}.{version.micro}"
     
-    def check_package_installed(self, package_name: str, import_name: Optional[str] = None) -> bool:
+    def check_package_installed(self, package_name: str, import_name: str | None = None) -> bool:
         """Check if a Python package is installed."""
         try:
             spec = importlib.util.find_spec(import_name or package_name)
@@ -44,7 +45,7 @@ class EnvironmentDoctor:
     def check_command_available(self, command: str) -> bool:
         """Check if a system command is available."""
         # Method 1: Check if executable exists in PATH
-        import shutil
+        # Method 1: Check if executable exists in PATH
         if shutil.which(command) is None:
             return False
 
@@ -93,7 +94,7 @@ class EnvironmentDoctor:
         
         return "System Python (⚠️  Not recommended)"
     
-    def check_core_dependencies(self) -> Dict[str, bool]:
+    def check_core_dependencies(self) -> dict[str, bool]:
         """Check installation status of core dependencies."""
         deps = {
             "numpy": "numpy",
@@ -113,7 +114,7 @@ class EnvironmentDoctor:
         
         return results
     
-    def check_optional_dependencies(self) -> Dict[str, bool]:
+    def check_optional_dependencies(self) -> dict[str, bool]:
         """Check installation status of optional dependencies."""
         optional_deps = {
             "faster-whisper": "faster_whisper",
@@ -131,7 +132,7 @@ class EnvironmentDoctor:
         
         return results
     
-    def check_system_commands(self) -> Dict[str, bool]:
+    def check_system_commands(self) -> dict[str, bool]:
         """Check availability of required system commands."""
         commands = {
             "ffmpeg": "Required for video processing",
@@ -148,7 +149,7 @@ class EnvironmentDoctor:
         
         return results
     
-    def check_data_directory(self) -> Tuple[bool, str]:
+    def check_data_directory(self) -> tuple[bool, str]:
         """Check if VoxGrep data directory is accessible."""
         try:
             from ..utils.config import get_data_dir

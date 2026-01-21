@@ -9,12 +9,18 @@ import sys
 import argparse
 import logging
 
-from rich_argparse import RichHelpFormatter
+try:
+    from rich_argparse import RichHelpFormatter
+    HelpFormatter = RichHelpFormatter
+except ImportError:
+    import argparse
+    HelpFormatter = argparse.HelpFormatter
 from rich.logging import RichHandler
 
 from .ui import console, print_banner
 from .interactive import interactive_mode
 from .commands import execute_args
+from ..modules.youtube import download_video
 from .. import __version__
 from ..utils.config import (
     DEFAULT_WHISPER_MODEL,
@@ -45,7 +51,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     
     parser = argparse.ArgumentParser(
         description='Generate a "supercut" of one or more video files by searching through subtitle tracks.',
-        formatter_class=RichHelpFormatter
+        formatter_class=HelpFormatter
     )
     
     # Input/Output
@@ -55,7 +61,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="inputfile",
         nargs="*",
         required=False,  # Not required for --doctor or --version
-        help="video file or files",
+        help="video file or files, or YouTube URLs",
     )
     io_group.add_argument(
         "--output", "-o",
@@ -125,6 +131,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         type=float,
         help="Subtitle re-sync delay +/- in seconds",
     )
+    proc_group.add_argument(
+        "--burn-in-subtitles", "-bs",
+        dest="burn_in_subtitles",
+        action="store_true",
+        help="Burn subtitles into the exported video",
+    )
 
     # Transcription
     trans_group = parser.add_argument_group("Transcription Options")
@@ -133,6 +145,18 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="transcribe",
         action="store_true",
         help="Transcribe the video using Whisper",
+    )
+    trans_group.add_argument(
+        "--translate",
+        dest="translate",
+        action="store_true",
+        help="Translate the subtitles to English (Whisper only)",
+    )
+    trans_group.add_argument(
+        "--stream",
+        dest="stream",
+        action="store_true",
+        help="Process a live stream or URL in real-time (background processing)",
     )
     trans_group.add_argument(
         "--model", "-mo",
@@ -249,10 +273,92 @@ def main() -> None:
     if hasattr(args, 'doctor') and args.doctor:
         from .doctor import run_doctor
         sys.exit(run_doctor())
+
+    # Handle Stream Mode
+    if hasattr(args, 'stream') and args.stream:
+        if not args.inputfile:
+            parser.error("argument --input/-i is required for streaming")
+        
+        if len(args.inputfile) > 1:
+            console.print("[red]Streaming mode only supports one URL at a time.[/red]")
+            sys.exit(1)
+            
+        url = args.inputfile[0]
+        if not (url.lower().startswith("http") or url.lower().startswith("rtmp")):
+             console.print("[red]Streaming mode requires a URL input (http/https/rtmp).[/red]")
+             sys.exit(1)
+            
+        try:
+            from ..core.stream_handler import StreamHandler
+            import time
+            
+            console.print(f"[bold cyan]Starting background stream processing for:[/bold cyan] {url}")
+            console.print(f"[dim]Recording to: {args.outputfile}[/dim]")
+            console.print("[dim]Press Ctrl+C to stop...[/dim]\n")
+            
+            def on_segment(segments):
+                for seg in segments:
+                    console.print(f"[green][{seg['start']:.1f}s -> {seg['end']:.1f}s][/green] {seg['content']}")
+            
+            handler = StreamHandler(callback=on_segment)
+            handler.start_processing(
+                url, 
+                args.outputfile,
+                device=args.device,
+                model=args.model,
+                compute_type=args.compute_type
+            )
+            
+            while handler.running:
+                time.sleep(0.5)
+                
+            console.print("\n[bold green]Stream processing complete.[/bold green]")
+            sys.exit(0)
+            
+        except ImportError as ie:
+             logger.error(f"Missing dependencies for streaming: {ie}")
+             sys.exit(1)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Stopping stream...[/yellow]")
+            if 'handler' in locals():
+                handler.stop()
+            sys.exit(0)
+        except Exception as e:
+            logger.error(f"Stream error: {e}")
+            sys.exit(1)
     
     # Validate that --input is provided for non-diagnostic operations
     if not args.inputfile:
         parser.error("the following arguments are required: --input/-i")
+    
+    # Process inputs (handle URLs)
+    processed_inputs = []
+    for inp in args.inputfile:
+        if inp.lower().startswith("http://") or inp.lower().startswith("https://"):
+            try:
+                console.print(f"[cyan]Found URL in input: {inp}[/cyan]")
+                # Use a simple status spinner, yt-dlp is fast enough usually or we can rely on internal logs if things get stuck
+                # But to show progress we use a custom hook
+                with console.status(f"[bold cyan]Initializing download...[/bold cyan]") as status:
+                    def progress_hook(d):
+                        if d['status'] == 'downloading':
+                            p = d.get('_percent_str', '').strip()
+                            eta = d.get('_eta_str', '').strip()
+                            status.update(f"[bold cyan]Downloading... {p} (ETA: {eta})[/bold cyan]")
+                        elif d['status'] == 'finished':
+                            status.update("[bold green]Download complete! Processing...[/bold green]")
+
+                    filename = download_video(inp, progress_hooks=[progress_hook], quiet=True)
+                    console.print(f"[green]✓ Downloaded:[/green] {filename}")
+                    processed_inputs.append(filename)
+            except Exception as e:
+                logger.error(f"Download failed: {e}")
+                console.print(f"[bold red]✗ Failed to download {inp}[/bold red]")
+                sys.exit(1)
+        else:
+            processed_inputs.append(inp)
+            
+    args.inputfile = processed_inputs
     
     # Execute the command
     success = execute_args(args)

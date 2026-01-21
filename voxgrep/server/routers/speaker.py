@@ -1,7 +1,7 @@
 """
 Speaker Diarization Routes
 """
-from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlmodel import Session, select, Session as DbSession
 
@@ -14,7 +14,7 @@ router = APIRouter(tags=["speakers"])
 @router.post("/diarize/{video_id}")
 def diarize_video(
     video_id: int,
-    num_speakers: Optional[int] = None,
+    num_speakers: int | None = None,
     force: bool = False,
     background_tasks: BackgroundTasks = None,
     session: Session = Depends(get_session)
@@ -69,7 +69,7 @@ def diarize_video(
     return {"status": "started", "video_id": video_id}
 
 
-@router.get("/speakers/{video_id}", response_model=List[Speaker])
+@router.get("/speakers/{video_id}", response_model=list[Speaker])
 def get_video_speakers(video_id: int, session: Session = Depends(get_session)):
     """Get speakers detected in a video."""
     speakers = session.exec(

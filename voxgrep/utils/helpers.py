@@ -6,7 +6,7 @@ Common utility functions used across the application.
 import os
 import logging
 from pathlib import Path
-from typing import Optional, List, Union
+from pathlib import Path
 from .config import SUBTITLE_EXTENSIONS, MEDIA_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS
 from .exceptions import InvalidFileFormatError
 
@@ -60,25 +60,25 @@ def get_media_type(filename: str) -> str:
 # ============================================================================
 # Path Utilities
 # ============================================================================
-def ensure_absolute_path(path: Union[str, Path]) -> Path:
+def ensure_absolute_path(path: str | Path) -> Path:
     """Ensure a path is absolute."""
     p = Path(path)
     return p.resolve() if not p.is_absolute() else p
 
 
-def ensure_directory_exists(path: Union[str, Path]) -> Path:
+def ensure_directory_exists(path: str | Path) -> Path:
     """Ensure a directory exists, creating it if necessary."""
     p = Path(path)
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
-def get_base_filename(filepath: Union[str, Path]) -> str:
+def get_base_filename(filepath: str | Path) -> str:
     """Get the filename without extension."""
     return Path(filepath).stem
 
 
-def get_output_directory(output_path: Union[str, Path]) -> Path:
+def get_output_directory(output_path: str | Path) -> Path:
     """Get the directory for an output file, creating it if necessary."""
     output_dir = Path(output_path).parent
     if output_dir != Path('.'):
@@ -89,7 +89,7 @@ def get_output_directory(output_path: Union[str, Path]) -> Path:
 # ============================================================================
 # File Validation
 # ============================================================================
-def validate_file_exists(filepath: Union[str, Path]) -> Path:
+def validate_file_exists(filepath: str | Path) -> Path:
     """
     Validate that a file exists.
     
@@ -106,7 +106,7 @@ def validate_file_exists(filepath: Union[str, Path]) -> Path:
     return p
 
 
-def validate_media_file(filepath: Union[str, Path]) -> Path:
+def validate_media_file(filepath: str | Path) -> Path:
     """
     Validate that a file exists and is a supported media file.
     
@@ -126,14 +126,14 @@ def validate_media_file(filepath: Union[str, Path]) -> Path:
 # ============================================================================
 # List Utilities
 # ============================================================================
-def ensure_list(value: Union[str, List[str]]) -> List[str]:
+def ensure_list(value: str | list[str]) -> list[str]:
     """Ensure a value is a list."""
     if isinstance(value, str):
         return [value]
     return value
 
 
-def flatten_list(nested_list: List[List]) -> List:
+def flatten_list(nested_list: list[list]) -> list:
     """Flatten a nested list."""
     return [item for sublist in nested_list for item in sublist]
 

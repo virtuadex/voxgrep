@@ -4,7 +4,6 @@ Ingest Routes (Download and Local Add)
 import os
 import subprocess
 import json
-from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sqlmodel import select, Session as DbSession
 
@@ -12,16 +11,15 @@ from ..dependencies import get_model_manager, get_vector_store, config, features
 from ..models import Video
 from ..db import engine
 from ..multi_model import TranscriptionBackend
-from ...utils.config import MEDIA_EXTENSIONS
-from ...utils.helpers import ensure_directory_exists
-from .library import _scan_path
+from ...modules.youtube import download_video
+from ...core.engine import parse_transcript, find_transcript
 
-router = APIRouter(tags=["ingest"])
+router = APIRouter()
 
 @router.post("/download")
-def download_video(
+def download_video_route(
     url: str, 
-    output_dir: Optional[str] = None, 
+    output_dir: str | None = None, 
     device: str = "auto",
     background_tasks: BackgroundTasks = None
 ):
@@ -38,51 +36,63 @@ def download_video(
         try:
             logger.info(f"Downloading video from {url} to {target_dir}")
             
-            cmd = [
-                "yt-dlp",
-                "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
-                "--merge-output-format", "mp4",
-                "-o", f"{target_dir}/%(title)s.%(ext)s",
-                "--print", "after_move:filepath",
-                url
-            ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            filepath = result.stdout.strip().split('\n')[-1]
+            # Use shared module logic (includes subtitle download)
+            filepath = download_video(
+                url, 
+                output_template=f"{target_dir}/%(title)s.%(ext)s",
+                quiet=False
+            )
             
             if not os.path.exists(filepath):
-                logger.error(f"yt-dlp reported success but file not found at {filepath}")
+                logger.error(f"Download reported success but file not found at {filepath}")
                 return
 
             logger.info(f"Successfully downloaded: {filepath}")
 
-            # Transcribe using model manager for auto backend selection
-            model_mgr = get_model_manager()
-            backend = None
-            if device == "mlx":
-                backend = TranscriptionBackend.MLX_WHISPER
-            elif device == "cpu":
-                backend = TranscriptionBackend.FASTER_WHISPER
-            
-            trans_result = model_mgr.transcribe(filepath, backend=backend)
-            
-            # Save transcript
+            # 1. Check if subtitles were downloaded
             transcript_path = os.path.splitext(filepath)[0] + ".json"
-            with open(transcript_path, "w", encoding="utf-8") as f:
-                json.dump(trans_result.segments, f)
+            existing_sub = find_transcript(filepath)
+            
+            segments = None
+            
+            if existing_sub:
+                logger.info(f"Found existing subtitle file: {existing_sub}")
+                # Parse existing VTT/SRT into our internal JSON format
+                segments = parse_transcript(filepath)
+                if segments:
+                    logger.info("Successfully parsed existing subtitles. Skipping Whisper transcription.")
+            
+            # 2. Transcribe if no subtitles found
+            if not segments:
+                logger.info("No subtitles found. Starting Whisper transcription...")
+                model_mgr = get_model_manager()
+                backend = None
+                if device == "mlx":
+                    backend = TranscriptionBackend.MLX_WHISPER
+                elif device == "cpu":
+                    backend = TranscriptionBackend.FASTER_WHISPER
+                
+                trans_result = model_mgr.transcribe(filepath, backend=backend)
+                segments = trans_result.segments
+
+            # 3. Save transcript to JSON (for uniformity and server cache)
+            if segments:
+                with open(transcript_path, "w", encoding="utf-8") as f:
+                    json.dump(segments, f)
+                logger.info(f"Transcript saved to {transcript_path}")
             
             # Scan to update DB and index
             with DbSession(engine) as session:
                 _scan_path(target_dir, session)
                 
                 # Auto-index for semantic search
-                if features.enable_auto_indexing and features.enable_semantic_search:
+                if features.enable_auto_indexing and features.enable_semantic_search and segments:
                     video = session.exec(
                         select(Video).where(Video.path == filepath)
                     ).first()
                     if video:
                         vector_store = get_vector_store()
-                        vector_store.index_video(video.id, trans_result.segments, session)
+                        vector_store.index_video(video.id, segments, session)
                 
         except Exception as e:
             logger.error(f"Download or transcription failed: {e}")

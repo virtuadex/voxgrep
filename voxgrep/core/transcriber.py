@@ -1,6 +1,6 @@
 import os
 import json
-from typing import List, Optional
+from collections.abc import Callable
 from tqdm import tqdm
 
 try:
@@ -35,17 +35,18 @@ logger = setup_logger(__name__)
 def transcribe_whisper(
     videofile: str, 
     model_name: str = DEFAULT_WHISPER_MODEL, 
-    prompt: Optional[str] = None, 
-    language: Optional[str] = None, 
+    prompt: str | None = None, 
+    language: str | None = None, 
     device: str = DEFAULT_DEVICE, 
     compute_type: str = DEFAULT_COMPUTE_TYPE,
-    progress_callback: Optional[callable] = None,
+    progress_callback: Callable | None = None,
     beam_size: int = 5,
     best_of: int = 5,
     vad_filter: bool = True,
-    vad_parameters: Optional[dict] = None,
-    normalize_audio: bool = False
-) -> List[dict]:
+    vad_parameters: dict | None = None,
+    normalize_audio: bool = False,
+    translate: bool = False
+) -> list[dict]:
     """
     Transcribes a video file using faster-whisper (CTranslate2)
     With word-level timestamps enabled.
@@ -57,6 +58,7 @@ def transcribe_whisper(
         vad_filter: Enable Voice Activity Detection to filter out non-speech. Default: True
         vad_parameters: Optional VAD parameters dict
         normalize_audio: Pre-process audio with loudnorm filter for better quality. Default: False
+        translate: Translate the subtitles to English. Default: False
     """
     if not WHISPER_AVAILABLE:
         raise TranscriptionModelNotAvailableError(
@@ -64,7 +66,7 @@ def transcribe_whisper(
         )
 
     logger.info(f"Transcribing {videofile} using faster-whisper ({model_name} model) on {device}")
-    logger.info(f"Accuracy settings: beam_size={beam_size}, best_of={best_of}, vad_filter={vad_filter}, normalize_audio={normalize_audio}")
+    logger.info(f"Accuracy settings: beam_size={beam_size}, best_of={best_of}, vad_filter={vad_filter}, normalize_audio={normalize_audio}, translate={translate}")
     
     # Audio normalization pre-processing
     actual_input_file = videofile
@@ -76,6 +78,14 @@ def transcribe_whisper(
             
             if should_normalize_audio(videofile):
                 logger.info("Normalizing audio levels for improved transcription...")
+                
+                # Notify progress
+                if progress_callback:
+                    try:
+                        progress_callback(0, 100, text="Normalizing audio levels (this may take a while)...")
+                    except Exception:
+                        pass
+                        
                 actual_input_file = norm_audio(videofile, output_file=cache_path)
                 logger.info(f"Using normalized audio: {actual_input_file}")
             else:
@@ -111,7 +121,8 @@ def transcribe_whisper(
             "language": language,
             "beam_size": beam_size,
             "best_of": best_of,
-            "vad_filter": vad_filter
+            "vad_filter": vad_filter,
+            "task": "translate" if translate else "transcribe"
         }
         
         # Add VAD parameters if provided
@@ -218,10 +229,10 @@ def transcribe_whisper(
 def transcribe_mlx(
     videofile: str, 
     model_name: str = DEFAULT_MLX_MODEL, 
-    language: Optional[str] = None, 
-    prompt: Optional[str] = None,
+    language: str | None = None, 
+    prompt: str | None = None,
     normalize_audio: bool = False
-) -> List[dict]:
+) -> list[dict]:
     """
     Transcribes a video file using mlx-whisper (Apple Silicon GPU)
     With word-level timestamps enabled.
@@ -296,19 +307,20 @@ def transcribe_mlx(
 
 def transcribe(
     videofile: str, 
-    model_name: Optional[str] = None, 
-    prompt: Optional[str] = None, 
-    language: Optional[str] = None, 
+    model_name: str | None = None, 
+    prompt: str | None = None, 
+    language: str | None = None, 
     device: str = DEFAULT_DEVICE, 
     compute_type: str = DEFAULT_COMPUTE_TYPE,
-    progress_callback: Optional[callable] = None,
-    on_existing_transcript: Optional[callable] = None,
+    progress_callback: Callable | None = None,
+    on_existing_transcript: Callable | None = None,
     beam_size: int = 5,
     best_of: int = 5,
     vad_filter: bool = True,
-    vad_parameters: Optional[dict] = None,
-    normalize_audio: bool = False
-) -> List[dict]:
+    vad_parameters: dict | None = None,
+    normalize_audio: bool = False,
+    translate: bool = False
+) -> list[dict]:
     """
     Transcribes a video file using Whisper, handling caching and backend selection.
     
@@ -321,6 +333,7 @@ def transcribe(
         vad_filter: Enable Voice Activity Detection
         vad_parameters: Optional VAD parameters
         normalize_audio: Pre-process audio with loudnorm filter
+        translate: Translate the subtitles to English
     """
     if not os.path.exists(videofile):
         raise VoxGrepFileNotFoundError(f"Could not find file {videofile}")
@@ -356,7 +369,8 @@ def transcribe(
         "beam_size": beam_size,
         "vad_filter": vad_filter,
         "has_prompt": bool(prompt),
-        "normalize_audio": normalize_audio
+        "normalize_audio": normalize_audio,
+        "translate": translate
     }
 
     if os.path.exists(transcript_file):
@@ -388,6 +402,10 @@ def transcribe(
                 existing_prompt = existing_metadata.get("has_prompt", False)
                 if existing_prompt != current_metadata["has_prompt"]:
                     changes.append(f"Vocabulary Prompt: {existing_prompt} -> {current_metadata['has_prompt']}")
+                
+                existing_trans = existing_metadata.get("translate", False)
+                if existing_trans != current_metadata["translate"]:
+                    changes.append(f"Translate: {existing_trans} -> {current_metadata['translate']}")
 
                 if changes:
                     if on_existing_transcript:
@@ -429,7 +447,8 @@ def transcribe(
             best_of=best_of,
             vad_filter=vad_filter,
             vad_parameters=vad_parameters,
-            normalize_audio=normalize_audio
+            normalize_audio=normalize_audio,
+            translate=translate
         )
 
     if not out:

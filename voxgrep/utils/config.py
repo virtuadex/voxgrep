@@ -5,7 +5,7 @@ Centralizes all configuration constants and settings for the application.
 """
 import os
 from pathlib import Path
-from typing import Optional
+from pathlib import Path
 from dataclasses import dataclass, field
 
 
@@ -24,6 +24,7 @@ MEDIA_EXTENSIONS = VIDEO_EXTENSIONS + AUDIO_EXTENSIONS
 BATCH_SIZE = 20  # Number of clips to process in a batch for large supercuts
 MAX_CHARS = 36  # Maximum characters for display/formatting
 DEFAULT_PADDING = 0.3  # Default padding in seconds for fragment/mash searches
+MASH_PADDING = 0.05  # Micro-padding in seconds for word-level cuts (50ms)
 
 
 # ============================================================================

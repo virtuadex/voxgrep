@@ -22,18 +22,18 @@ This list tracks the planned improvements and future features for the VoxGrep pr
 
 - [ ] **NLE XML Export**: Generate `.fcpxml` or `.edl` files for professional editing workflows (Final Cut, Premiere, Resolve).
 - [ ] **Deep YouTube/URL Integration**:
-  - [ ] Accept URLs in interactive mode.
-  - [ ] Automatic download using `yt-dlp`.
-  - [ ] background stream processing.
+  - [x] Accept URLs in interactive mode.
+  - [x] Automatic download using `yt-dlp`.
+  - [x] background stream processing.
 - [ ] **Burn-in Translation**: Support for burning translated subtitles into the output video.
 
 ## 🛠️ UX & Reliability
 
 - [x] **Configuration Persistence**: Save user preferences (Device, Model selection) to avoid repetitive choices.
 - [ ] **Session Summary**: Show post-task statistics (duration saved, clips cut, efficiency).
-- [ ] **Batch Error Recovery**: Continue processing remaining files if one fails in a batch.
+- [x] **Batch Error Recovery**: Continue processing remaining files if one fails in a batch.
 - [x] **Dry Run Mode**: Preview clip timestamps and final duration without rendering (implemented as Demo Mode).
-- [ ] **MPV Preview Robustness**: Better error handling and dependency checks for MPV.
+- [x] **MPV Preview Robustness**: Better error handling and dependency checks for MPV.
 
 ## 📦 Maintenance
 

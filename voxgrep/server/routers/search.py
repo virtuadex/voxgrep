@@ -2,7 +2,7 @@
 Search and Analysis Routes
 """
 import os
-from typing import List, Optional
+import os
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
@@ -13,12 +13,12 @@ from ...utils.config import MEDIA_EXTENSIONS, DEFAULT_SEARCH_TYPE
 
 router = APIRouter(tags=["search"])
 
-@router.get("/search", response_model=List[SearchResult])
+@router.get("/search", response_model=list[SearchResult])
 def search(
     query: str, 
     type: str = DEFAULT_SEARCH_TYPE, 
     threshold: float = 0.45,
-    video_ids: Optional[str] = None,
+    video_ids: str | None = None,
     session: Session = Depends(get_session)
 ):
     """

@@ -3,7 +3,7 @@ VoxGrep Database Models
 
 SQLModel definitions for the VoxGrep library database.
 """
-from typing import Optional, List
+
 from datetime import datetime
 from sqlmodel import Field, SQLModel, Relationship
 from enum import Enum
@@ -39,22 +39,22 @@ class VideoBase(SQLModel):
     duration: float = 0.0
     created_at: float
     has_transcript: bool = False
-    transcript_path: Optional[str] = None
+    transcript_path: str | None = None
     # Phase 2: Speaker diarization
     has_diarization: bool = False
-    diarization_path: Optional[str] = None
+    diarization_path: str | None = None
     # Phase 2: Indexing status
     is_indexed: bool = False
-    indexed_at: Optional[float] = None
+    indexed_at: float | None = None
 
 
 class Video(VideoBase, table=True):
     """Video entity stored in the database."""
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     
     # Relationships
-    embeddings: List["Embedding"] = Relationship(back_populates="video")
-    speakers: List["Speaker"] = Relationship(back_populates="video")
+    embeddings: list["Embedding"] = Relationship(back_populates="video")
+    speakers: list["Speaker"] = Relationship(back_populates="video")
 
 
 # ============================================================================
@@ -65,7 +65,7 @@ class Embedding(SQLModel, table=True):
     Stores embeddings for transcript segments.
     Used for semantic search across the library.
     """
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     video_id: int = Field(foreign_key="video.id", index=True)
     segment_index: int  # Index in the transcript
     segment_start: float
@@ -76,7 +76,7 @@ class Embedding(SQLModel, table=True):
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp())
     
     # Relationship back to video
-    video: Optional[Video] = Relationship(back_populates="embeddings")
+    video: Video | None = Relationship(back_populates="embeddings")
 
 
 # ============================================================================
@@ -86,20 +86,20 @@ class Speaker(SQLModel, table=True):
     """
     Represents a unique speaker detected in a video.
     """
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     video_id: int = Field(foreign_key="video.id", index=True)
     speaker_label: str  # e.g., "SPEAKER_00", "SPEAKER_01"
-    display_name: Optional[str] = None  # User-assigned name
+    display_name: str | None = None  # User-assigned name
     total_duration: float = 0.0  # Total speaking time in seconds
     segment_count: int = 0  # Number of segments
     
     # Relationship back to video
-    video: Optional[Video] = Relationship(back_populates="speakers")
+    video: Video | None = Relationship(back_populates="speakers")
 
 
 class SpeakerSegment(SQLModel, table=True):
     """Individual time segment for a speaker."""
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     speaker_id: int = Field(foreign_key="speaker.id", index=True)
     start: float
     end: float
@@ -113,13 +113,13 @@ class ExportJob(SQLModel, table=True):
     """
     Tracks export jobs for supercut generation.
     """
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     output_path: str
     status: ExportStatus = ExportStatus.PENDING
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp())
-    started_at: Optional[float] = None
-    completed_at: Optional[float] = None
-    error_message: Optional[str] = None
+    started_at: float | None = None
+    completed_at: float | None = None
+    error_message: str | None = None
     total_clips: int = 0
     processed_clips: int = 0
     
@@ -127,16 +127,16 @@ class ExportJob(SQLModel, table=True):
     transition_type: TransitionType = TransitionType.CUT
     transition_duration: float = 0.5  # seconds
     burn_subtitles: bool = False
-    subtitle_style: Optional[str] = None  # JSON string of subtitle styling
+    subtitle_style: str | None = None  # JSON string of subtitle styling
 
 
 class Composition(SQLModel, table=True):
     """
     A saved composition (supercut project) that can be re-exported.
     """
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp())
     updated_at: float = Field(default_factory=lambda: datetime.now().timestamp())
     
@@ -150,9 +150,9 @@ class CompositionClip(SQLModel, table=True):
     """
     Individual clip in a composition.
     """
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     composition_id: int = Field(foreign_key="composition.id", index=True)
-    video_id: Optional[int] = Field(foreign_key="video.id")
+    video_id: int | None = Field(foreign_key="video.id")
     
     # Clip timing
     source_path: str
@@ -161,11 +161,11 @@ class CompositionClip(SQLModel, table=True):
     order_index: int  # Position in the composition
     
     # Content
-    content: Optional[str] = None  # Transcript text
+    content: str | None = None  # Transcript text
     
     # Per-clip settings (override composition defaults)
-    transition_type: Optional[TransitionType] = None
-    transition_duration: Optional[float] = None
+    transition_type: TransitionType | None = None
+    transition_duration: float | None = None
 
 
 # ============================================================================
@@ -177,9 +177,9 @@ class SearchResult(SQLModel):
     start: float
     end: float
     content: str
-    score: Optional[float] = None
-    speaker: Optional[str] = None  # Phase 2: Speaker label
-    video_id: Optional[int] = None
+    score: float | None = None
+    speaker: str | None = None  # Phase 2: Speaker label
+    video_id: int | None = None
 
 
 class VectorStats(SQLModel):
@@ -187,7 +187,7 @@ class VectorStats(SQLModel):
     total_embeddings: int
     indexed_videos: int
     embedding_dim: int
-    model_name: Optional[str]
+    model_name: str | None
 
 
 class ExportProgress(SQLModel):
@@ -197,13 +197,13 @@ class ExportProgress(SQLModel):
     progress: float  # 0.0 to 1.0
     processed_clips: int
     total_clips: int
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 class TranscriptionModel(SQLModel):
     """Available transcription model info."""
     name: str
     backend: str  # "faster-whisper", "mlx", "openai"
-    description: Optional[str] = None
+    description: str | None = None
     is_available: bool
     requires_gpu: bool = False

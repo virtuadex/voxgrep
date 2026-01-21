@@ -8,7 +8,9 @@ from .formats import vtt, srt, sphinx, fcpxml
 # Utils package is available as .utils
 from . import utils
 
-# Main voxgrep function
+# Transcription module
+from .core import transcriber as transcribe
+
 # Main voxgrep function
 from .core.logic import (
     voxgrep,

@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, Any
+from typing import Any
 from .config import get_data_dir
 
 PREFS_FILE = get_data_dir() / "prefs.json"
@@ -23,7 +23,7 @@ def _get_prefs_file():
     """Get the preferences file path (lazy evaluation)."""
     return get_data_dir() / "prefs.json"
 
-def load_prefs() -> Dict[str, Any]:
+def load_prefs() -> dict[str, Any]:
     """Load user preferences from JSON file."""
     prefs_file = _get_prefs_file()
     if not prefs_file.exists():
@@ -37,7 +37,7 @@ def load_prefs() -> Dict[str, Any]:
     except (json.JSONDecodeError, OSError):
         return DEFAULT_PREFS.copy()
 
-def save_prefs(prefs: Dict[str, Any]):
+def save_prefs(prefs: dict[str, Any]):
     """Save user preferences to JSON file."""
     prefs_file = _get_prefs_file()
     try:

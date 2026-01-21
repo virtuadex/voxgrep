@@ -1,10 +1,10 @@
 from pathlib import Path
-from voxgrep import exporter
+from voxgrep.core import exporter
 
 from pathlib import Path
-from voxgrep import exporter
+from voxgrep.core import exporter
 import pytest
-from voxgrep.exceptions import InvalidOutputFormatError
+from voxgrep.utils.exceptions import InvalidOutputFormatError
 
 def test_get_input_type():
     # Only tests logic based on keys, doesn't actually check files on disk 

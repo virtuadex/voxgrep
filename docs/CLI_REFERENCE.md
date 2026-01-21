@@ -25,7 +25,7 @@ Detailed documentation for the `voxgrep` command-line interface.
 
 | Option           | Short | Description                                                  |
 | :--------------- | :---- | :----------------------------------------------------------- |
-| `--input`        | `-i`  | Input file(s). Supports glob patterns.                       |
+| `--input`        | `-i`  | Input file(s) or **URLs** (downloads automatically). Supports globs. |
 | `--output`       | `-o`  | Output filename (default: `supercut.mp4`).                   |
 | `--export-clips` | `-ec` | Save clips as individual files instead of a single supercut. |
 | `--export-vtt`   | `-ev` | Export the supercut transcript as a `.vtt` file.             |
