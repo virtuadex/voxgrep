@@ -3,7 +3,11 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Download, Cpu, Activity, AlertCircle, Youtube, Loader2, File, FolderOpen } from "lucide-react";
+import { 
+  Upload, Cpu, Link, Loader2, 
+  FileVideo, FolderOpen, Sparkles, Zap, Check,
+  HardDrive, Wifi, AlertTriangle
+} from "lucide-react";
 
 interface InputSourceProps {
   url: string;
@@ -26,20 +30,30 @@ export function InputSource({
 }: InputSourceProps) {
   const isProcessing = status !== "idle" && status !== "error";
   const [isDragging, setIsDragging] = useState(false);
+  const [inputType, setInputType] = useState<'url' | 'file' | null>(null);
+  const [showValidation, setShowValidation] = useState(false);
+
+  // Detect input type
+  useEffect(() => {
+    if (url.startsWith('/') || url.match(/^[A-Za-z]:\\/)) {
+      setInputType('file');
+    } else if (url.length > 0) {
+      setInputType('url');
+    } else {
+      setInputType(null);
+    }
+    setShowValidation(false);
+  }, [url]);
 
   useEffect(() => {
     const unlisteners: (() => void)[] = [];
 
     const setupListeners = async () => {
-      // Handler for drop events - supports both v1 and v2 payload formats
       const handleDrop = (event: any) => {
         setIsDragging(false);
-        
         const payload = event.payload;
         let paths: string[] = [];
         
-        // v1 format: payload is string[]
-        // v2 format: payload is { paths: string[], position: { x, y } }
         if (Array.isArray(payload)) {
           paths = payload;
         } else if (payload?.paths && Array.isArray(payload.paths)) {
@@ -51,15 +65,9 @@ export function InputSource({
         }
       };
 
-      const handleDragEnter = () => {
-        setIsDragging(true);
-      };
+      const handleDragEnter = () => setIsDragging(true);
+      const handleDragLeave = () => setIsDragging(false);
 
-      const handleDragLeave = () => {
-        setIsDragging(false);
-      };
-
-      // Listen to Tauri v2 events (new names)
       try {
         unlisteners.push(await listen("tauri://drag-drop", handleDrop));
         unlisteners.push(await listen("tauri://drag-enter", handleDragEnter));
@@ -68,7 +76,6 @@ export function InputSource({
         console.warn("Failed to register v2 events:", e);
       }
 
-      // Also listen to v1 events for backward compatibility
       try {
         unlisteners.push(await listen("tauri://file-drop", handleDrop));
         unlisteners.push(await listen("tauri://file-drop-hover", handleDragEnter));
@@ -79,10 +86,7 @@ export function InputSource({
     };
 
     setupListeners();
-
-    return () => {
-      unlisteners.forEach(unlisten => unlisten());
-    };
+    return () => unlisteners.forEach(unlisten => unlisten());
   }, [setUrl]);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -104,18 +108,10 @@ export function InputSource({
     setIsDragging(false);
 
     const files = Array.from(e.dataTransfer.files);
-    
     if (files.length > 0) {
-      // In Tauri, the File object often has a 'path' property, 
-      // but we need to cast to any to access it or check if it exists.
       const file = files[0] as any;
-      
       if (file.path) {
         setUrl(file.path);
-      } else if (file.name) {
-          // Fallback might just be name, which isn't full path, 
-          // but logging it helps debug.
-          console.warn("File path not available, only have name. This won't work for processing.");
       }
     }
   };
@@ -131,170 +127,217 @@ export function InputSource({
       });
       
       if (selected) {
-        // Handle both string and array returns
         const filePath = typeof selected === 'string' ? selected : selected[0];
-        if (filePath) {
-          setUrl(filePath);
-        }
+        if (filePath) setUrl(filePath);
       }
     } catch (error) {
       console.error("File picker error:", error);
-      alert(`Failed to open file picker: ${error}`);
     }
   };
 
+  const handleAnalyze = () => {
+    if (!url.trim()) {
+      setShowValidation(true);
+      return;
+    }
+    onDownload();
+  };
+
   return (
-    <section 
-      className={`bg-bg-secondary p-6 technical-border shadow-technical relative overflow-hidden transition-colors ${isDragging ? "border-accent-orange" : ""}`}
+    <motion.section 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      className={`glass-card rounded-xl p-5 relative overflow-hidden transition-all duration-300
+        ${isDragging ? "border-accent-primary shadow-glow-primary" : ""}
+      `}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {isDragging && (
-        <div className="absolute inset-0 z-50 bg-accent-orange/90 flex flex-col items-center justify-center text-white backdrop-blur-sm animate-in fade-in duration-200">
-          <File className="w-16 h-16 mb-4 animate-bounce" />
-          <p className="font-bold text-lg tracking-widest uppercase">Drop File Here</p>
-        </div>
-      )}
+      {/* Drag Overlay */}
+      <AnimatePresence>
+        {isDragging && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 bg-accent-primary/90 backdrop-blur-lg flex flex-col items-center justify-center rounded-xl"
+          >
+            <motion.div
+              animate={{ y: [0, -8, 0] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <FileVideo className="w-12 h-12 text-white mb-3" />
+            </motion.div>
+            <p className="text-lg font-bold text-white">Drop to Analyze</p>
+            <p className="text-sm text-white/70 mt-1">MP4, MOV, MKV supported</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <div className="absolute top-0 right-0 p-2 opacity-50">
-         <div className="w-16 h-16 rounded-full border border-border-main flex items-center justify-center">
-             <div className="w-12 h-12 rounded-full border border-border-main" />
-         </div>
+      {/* Section Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="section-label">
+          <Upload className="w-4 h-4 text-accent-primary" />
+          Add Video
+        </div>
+        {inputType && (
+          <span className={`badge ${inputType === 'file' ? 'badge-info' : 'badge-warning'}`}>
+            {inputType === 'file' ? <HardDrive className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
+            {inputType === 'file' ? 'Local' : 'URL'}
+          </span>
+        )}
       </div>
-      
-      <h2 className="text-sm font-bold mb-6 flex items-center gap-3 text-text-main uppercase tracking-widest border-b border-border-main pb-2">
-        <Download size={16} />
-        INPUT SOURCE
-      </h2>
 
-      <div className="space-y-6">
-        <div className="space-y-2">
-          <label className="technical-text text-text-muted ml-1">Video URL / Local Path</label>
-          <div className="flex gap-2">
-            <div className="relative group flex-1">
-              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-text-muted group-focus-within:text-accent-orange transition-colors">
-                <Youtube size={18} />
-              </div>
-              <input
-                type="text"
-                placeholder="Paste YouTube URL or Local File..."
-                className="w-full bg-white border border-border-strong rounded-none pl-12 pr-4 py-3 text-sm font-mono text-text-main focus:outline-none focus:border-accent-orange focus:ring-1 focus:ring-accent-orange transition-all placeholder:text-text-muted/50"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={isProcessing}
-              />
+      {/* URL/Path Input */}
+      <div className="space-y-3">
+        <div className="relative">
+          <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+            <Link className={`w-4 h-4 transition-colors ${url ? 'text-accent-primary' : 'text-text-muted'}`} />
+          </div>
+          <input
+            type="text"
+            placeholder="YouTube URL or drag a file..."
+            className={`input-field pl-10 pr-12 py-3 text-sm ${showValidation && !url ? 'border-accent-danger focus:border-accent-danger focus:ring-accent-danger/30' : ''}`}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            disabled={isProcessing}
+          />
+          <button
+            onClick={handleBrowseFiles}
+            disabled={isProcessing}
+            className="absolute right-2 inset-y-2 px-2 text-text-muted hover:text-accent-primary transition-colors disabled:opacity-50"
+            title="Browse files"
+          >
+            <FolderOpen className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Validation Message */}
+        <AnimatePresence>
+          {showValidation && !url && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="flex items-center gap-2 text-accent-danger text-xs"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              Please enter a URL or select a file
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* GPU Toggle - Compact */}
+        <div className="flex items-center justify-between p-3 rounded-lg bg-bg-secondary/50 border border-border-subtle">
+          <div className="flex items-center gap-2.5">
+            <Cpu className={`w-4 h-4 transition-colors ${useGPU ? 'text-accent-primary' : 'text-text-muted'}`} />
+            <div>
+              <div className="text-sm font-medium text-text-primary">GPU Acceleration</div>
+              <div className="text-[10px] text-text-muted">MLX / CUDA</div>
             </div>
-            <button
-              onClick={handleBrowseFiles}
-              disabled={isProcessing}
-              className="px-4 py-3 bg-white border border-border-strong hover:border-accent-orange hover:text-accent-orange transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium text-text-main"
-              title="Browse local files"
-            >
-              <FolderOpen size={18} />
-              Browse
-            </button>
           </div>
+          <button
+            onClick={() => setUseGPU(!useGPU)}
+            disabled={isProcessing}
+            className={`relative w-10 h-5 rounded-full transition-colors ${useGPU ? 'bg-accent-primary' : 'bg-border-strong'}`}
+            role="switch"
+            aria-checked={useGPU}
+          >
+            <motion.div 
+              animate={{ x: useGPU ? 20 : 0 }}
+              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+              className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow flex items-center justify-center"
+            >
+              {useGPU && <Check className="w-2.5 h-2.5 text-accent-primary" />}
+            </motion.div>
+          </button>
         </div>
 
-        <div className="flex items-center gap-3 px-3 py-3 bg-white border border-border-main">
-          <div className={`p-2 transition-colors ${useGPU ? "text-accent-orange" : "text-text-muted"}`}>
-            <Cpu size={16} />
-          </div>
-          <div className="flex-1">
-            <div className="technical-text text-text-muted">Acceleration</div>
-            <label
-              htmlFor="gpuToggle"
-              className="text-xs text-text-main cursor-pointer select-none flex items-center justify-between font-medium"
-            >
-              Use GPU (Apple Silicon / CUDA)
-              <input
-                type="checkbox"
-                id="gpuToggle"
-                checked={useGPU}
-                onChange={(e) => setUseGPU(e.target.checked)}
-                className="w-4 h-4 accent-accent-orange cursor-pointer rounded-none"
-                disabled={isProcessing}
-              />
-            </label>
-          </div>
-        </div>
-
+        {/* Main Action Button */}
         <button
-          onClick={onDownload}
-          disabled={isProcessing || !url}
-          className={`w-full relative overflow-hidden group transition-all py-3 font-bold text-xs uppercase tracking-[0.2em] shadow-sm active:translate-y-px flex items-center justify-center gap-3 border border-transparent ${
+          onClick={handleAnalyze}
+          disabled={isProcessing}
+          className={`w-full py-3 rounded-lg font-bold text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2.5 ${
             isProcessing 
-              ? "bg-bg-main text-text-muted border-border-main cursor-wait" 
-              : "bg-accent-orange hover:bg-orange-600 text-white shadow-md active:shadow-none"
+              ? 'bg-bg-elevated text-text-muted border border-border-default cursor-wait' 
+              : 'btn-primary'
           }`}
         >
           {isProcessing ? (
             <>
-              <Loader2 size={16} className="animate-spin" />
-              Processing...
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {status === "downloading" ? "Downloading..." : status === "transcribing" ? "Transcribing..." : "Processing..."}
             </>
           ) : (
             <>
-              <Activity size={16} />
+              <Zap className="w-4 h-4" />
               Analyze Video
             </>
           )}
         </button>
+      </div>
 
-        <AnimatePresence>
-          {status !== "idle" && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mt-4 p-4 bg-white border border-border-main shadow-inner"
-            >
+      {/* Progress Section */}
+      <AnimatePresence>
+        {status !== "idle" && (
+          <motion.div 
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mt-4 overflow-hidden"
+          >
+            <div className={`p-3 rounded-lg border-l-2 ${
+              status === "error" 
+                ? 'bg-accent-danger/10 border-accent-danger' 
+                : status === "downloading"
+                  ? 'bg-accent-secondary/10 border-accent-secondary'
+                  : 'bg-accent-primary/10 border-accent-primary'
+            }`}>
               <div className="flex justify-between items-center mb-2">
                 <div className="flex items-center gap-2">
-                  {status === "error" ? (
-                    <AlertCircle size={14} className="text-accent-red" />
-                  ) : (
-                    <div className={`w-2 h-2 rounded-full animate-pulse ${
-                      status === "downloading" ? "bg-accent-blue" : 
-                      status === "transcribing" ? "bg-accent-orange" : "bg-green-600"
-                    }`} />
-                  )}
-                  <span className={`technical-text ${
-                    status === "downloading" ? "text-accent-blue" :
-                    status === "transcribing" ? "text-accent-orange" :
-                    status === "exporting" ? "text-green-600" : "text-accent-red"
+                  <div className={`w-1.5 h-1.5 rounded-full ${
+                    status === "error" ? "bg-accent-danger" : "bg-current animate-pulse"
+                  }`} style={{ color: status === "downloading" ? 'var(--color-accent-secondary)' : 'var(--color-accent-primary)' }} />
+                  <span className={`text-xs font-semibold ${
+                    status === "error" ? "text-accent-danger" :
+                    status === "downloading" ? "text-accent-secondary" : "text-accent-primary"
                   }`}>
-                    {status === "downloading" ? "Downloading" :
-                     status === "transcribing" ? "Transcribing" :
-                     status === "exporting" ? "Exporting" : "Failed"}
+                    {status === "downloading" && "Downloading"}
+                    {status === "transcribing" && "Whisper AI"}
+                    {status === "exporting" && "Rendering"}
+                    {status === "error" && "Failed"}
                   </span>
                 </div>
-                <span className="text-xs font-mono text-text-muted">{Math.round(progress)}%</span>
+                <span className="text-xs font-mono text-text-secondary">{Math.round(progress)}%</span>
               </div>
               
-              <div className="w-full bg-bg-main h-1.5 overflow-hidden border border-border-main">
+              <div className="progress-bar h-1.5">
                 <motion.div
+                  className="progress-bar-fill"
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
-                  className={`h-full ${
-                    status === "downloading" ? "bg-accent-blue" :
-                    status === "transcribing" ? "bg-accent-orange" :
-                    status === "exporting" ? "bg-green-600" :
-                    "bg-accent-red"
-                  }`}
+                  style={{ 
+                    background: status === "error" 
+                      ? 'var(--color-accent-danger)' 
+                      : status === "downloading"
+                        ? 'var(--color-accent-secondary)'
+                        : undefined 
+                  }}
                 />
               </div>
               
               {status === "transcribing" && (
-                <p className="mt-2 text-[10px] text-text-muted text-center font-mono">
-                  _whisper_process::extracting_dialog
-                </p>
+                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-text-muted">
+                  <Sparkles className="w-2.5 h-2.5 text-accent-primary" />
+                  Extracting dialog...
+                </div>
               )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </section>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.section>
   );
 }

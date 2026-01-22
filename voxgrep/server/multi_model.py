@@ -175,6 +175,10 @@ class FasterWhisperProvider(TranscriptionProvider):
 class MLXWhisperProvider(TranscriptionProvider):
     """Provider for MLX-Whisper (Apple Silicon)."""
     
+    def __init__(self):
+        self._model_cache = {}
+        self._original_load_model = None
+
     def is_available(self) -> bool:
         try:
             import mlx_whisper
@@ -192,6 +196,36 @@ class MLXWhisperProvider(TranscriptionProvider):
         **kwargs
     ) -> TranscriptionResult:
         import mlx_whisper
+        import mlx_whisper.transcribe
+        import sys
+        
+        # --- Caching Logic Start ---
+        # Monkey-patch load_model in mlx_whisper.transcribe module to enable caching
+        if self._original_load_model is None:
+            # Get the actual module object, not the function
+            transcribe_module = sys.modules.get("mlx_whisper.transcribe")
+            
+            if transcribe_module and hasattr(transcribe_module, "load_model"):
+                self._original_load_model = transcribe_module.load_model
+                
+                def cached_load_model(*args, **kwargs):
+                    # Create a cache key from arguments
+                    # args[0] is typically path_or_hf_repo
+                    key = (args, tuple(sorted(kwargs.items())))
+                    
+                    if key in self._model_cache:
+                        logger.debug(f"Using cached MLX model for {args[0] if args else 'unknown'}")
+                        return self._model_cache[key]
+                    
+                    logger.info(f"Loading new MLX model: {args[0] if args else 'unknown'}")
+                    model_instance = self._original_load_model(*args, **kwargs)
+                    self._model_cache[key] = model_instance
+                    return model_instance
+                
+                # Apply patch to the module
+                transcribe_module.load_model = cached_load_model
+                logger.info("Applied caching patch to mlx_whisper.transcribe module")
+        # --- Caching Logic End ---
         
         model_name = model or DEFAULT_MLX_MODEL
         

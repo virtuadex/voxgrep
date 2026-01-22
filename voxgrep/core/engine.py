@@ -268,14 +268,47 @@ def search(
         all_words = []
         for file in tqdm(files, desc="Indexing words for mash", unit="file", disable=len(files) < 2):
             transcript = parse_transcript(file, prefer=prefer)
-            if transcript and len(transcript) > 0 and "words" in transcript[0]:
+            if not transcript:
+                continue
+                
+            # Check if we have word-level timestamps
+            if "words" in transcript[0]:
+                # Use existing word-level timestamps
                 for line in transcript:
                     for w in line["words"]:
                         w["file"] = file
                         all_words.append(w)
+            else:
+                # Synthesize word-level timestamps from sentence-level data
+                logger.info(
+                    f"Synthesizing word-level timestamps for mash search on '{os.path.basename(file)}'"
+                )
+                for line in transcript:
+                    content = line["content"]
+                    start_time = line["start"]
+                    end_time = line["end"]
+                    duration = end_time - start_time
+                    
+                    # Split content into words
+                    word_list = content.split()
+                    if not word_list:
+                        continue
+                    
+                    # Distribute time evenly across words
+                    time_per_word = duration / len(word_list)
+                    
+                    for i, word in enumerate(word_list):
+                        word_start = start_time + (i * time_per_word)
+                        word_end = start_time + ((i + 1) * time_per_word)
+                        all_words.append({
+                            "word": word,
+                            "start": word_start,
+                            "end": word_end,
+                            "file": file
+                        })
         
         if not all_words:
-            logger.error("Could not find word-level timestamps in any of the provided files.")
+            logger.error("Could not extract any words from the provided files.")
             return []
 
         for _query in query:
@@ -373,22 +406,65 @@ def search(
                         })
 
         elif search_type == "fragment":
-            if not transcript or "words" not in transcript[0]:
+            # Handle missing word-level timestamps by synthesizing them
+            if not transcript:
                 continue
-
+                
             words = []
-            for line in transcript:
-                words += line["words"]
+            
+            # Check if we have word-level timestamps
+            if transcript and "words" in transcript[0]:
+                # Use existing word-level timestamps
+                for line in transcript:
+                    words += line["words"]
+            else:
+                # Synthesize word-level timestamps from sentence-level data
+                logger.info(
+                    f"Synthesizing word-level timestamps for '{os.path.basename(file)}' "
+                    f"(original transcript has sentence-level timestamps only)"
+                )
+                for line in transcript:
+                    content = line["content"]
+                    start_time = line["start"]
+                    end_time = line["end"]
+                    duration = end_time - start_time
+                    
+                    # Split content into words
+                    word_list = content.split()
+                    if not word_list:
+                        continue
+                    
+                    # Distribute time evenly across words
+                    time_per_word = duration / len(word_list)
+                    
+                    for i, word in enumerate(word_list):
+                        word_start = start_time + (i * time_per_word)
+                        word_end = start_time + ((i + 1) * time_per_word)
+                        words.append({
+                            "word": word,
+                            "start": word_start,
+                            "end": word_end
+                        })
 
             for _query_str, _query_regex in compiled_queries:
                 queries = [q.strip() for q in _query_str.split(" ") if q.strip()]
                 if not queries: continue
                 
                 fragment_len = len(queries)
+                
+                # Compile individual regex patterns for each query word
+                query_patterns = []
+                for q in queries:
+                    if exact_match:
+                        pattern = r"\b" + re.escape(q) + r"\b"
+                    else:
+                        pattern = re.escape(q)
+                    query_patterns.append(re.compile(pattern, re.IGNORECASE))
+                
                 for i in range(len(words) - fragment_len + 1):
                     fragment = words[i:i+fragment_len]
-                    # Use the compiled regex pattern to respect exact_match
-                    if all(_query_regex.search(w["word"]) for w in fragment):
+                    # Match each query word against its corresponding fragment word
+                    if all(query_patterns[j].search(fragment[j]["word"]) for j in range(fragment_len)):
                         all_segments.append({
                             "file": file,
                             "start": fragment[0]["start"],

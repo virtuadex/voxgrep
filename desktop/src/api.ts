@@ -103,6 +103,7 @@ export const searchMedia = async (
   query: string,
   type: SearchType = "sentence",
   threshold: number = 0.45,
+  exactMatch: boolean = false,
   videoIds?: number[]
 ): Promise<SearchMatch[]> => {
   const { data } = await api.get("/search", {
@@ -110,6 +111,7 @@ export const searchMedia = async (
       query,
       type,
       threshold,
+      exact_match: exactMatch,
       video_ids: videoIds?.join(","),
     },
   });

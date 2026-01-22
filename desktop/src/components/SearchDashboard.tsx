@@ -1,11 +1,15 @@
 import { useState, useEffect, KeyboardEvent, useMemo, useRef, useCallback } from "react";
 import { SearchMatch, NGramMatch, AppStatus, SearchType } from "../types";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Scissors, FolderOpen, Play, BarChart3, Info, Sparkles, X, Hash, Clock, Percent, Activity, Loader2 } from "lucide-react";
+import { 
+  Search, Scissors, FolderOpen, Play, BarChart3, Sparkles, X, Hash, 
+  Clock, Activity, Loader2, Zap, Waves, Target, 
+  MessageSquare, TrendingUp, Volume2, AlertCircle
+} from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 interface SearchDashboardProps {
-  onSearch: (query: string, type: SearchType, threshold: number) => void;
+  onSearch: (query: string, type: SearchType, threshold: number, exactMatch?: boolean) => void;
   onExport: (matches: SearchMatch[]) => void;
   onOpenFolder: (path: string) => void;
   onGetNGrams: (n: number) => void;
@@ -15,7 +19,15 @@ interface SearchDashboardProps {
   isNgramsLoading: boolean;
   status: AppStatus;
   progress: number;
+  searchError?: Error | null;
 }
+
+const searchModes: { id: SearchType; label: string; icon: typeof Hash; desc: string }[] = [
+  { id: "fragment", label: "Fragment", icon: Hash, desc: "Words" },
+  { id: "sentence", label: "Sentence", icon: MessageSquare, desc: "Full lines" },
+  { id: "semantic", label: "Semantic", icon: Sparkles, desc: "AI meaning" },
+  { id: "mash", label: "Mashup", icon: Scissors, desc: "Random remix" },
+];
 
 export function SearchDashboard({ 
   onSearch, 
@@ -27,7 +39,8 @@ export function SearchDashboard({
   isSearching, 
   isNgramsLoading,
   status, 
-  progress 
+  progress,
+  searchError
 }: SearchDashboardProps) {
   const [query, setQuery] = useState("");
   const [searchType, setSearchType] = useState<SearchType>("sentence");
@@ -36,15 +49,17 @@ export function SearchDashboard({
   const [searchTime, setSearchTime] = useState<number | null>(null);
   const [startTime, setStartTime] = useState<number>(0);
   const [ngramN, setNgramN] = useState(1);
+  const [exactMatch, setExactMatch] = useState(false);
+  const [hoveringVideo, setHoveringVideo] = useState<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const triggerSearch = useCallback(() => {
     if (query.trim().length > 0) {
       setHasSearched(true);
       setStartTime(performance.now());
-      onSearch(query.trim(), searchType, threshold);
+      onSearch(query.trim(), searchType, threshold, exactMatch);
     }
-  }, [query, searchType, threshold, onSearch]);
+  }, [query, searchType, threshold, exactMatch, onSearch]);
 
   useEffect(() => {
     if (!isSearching && hasSearched && startTime > 0) {
@@ -53,35 +68,42 @@ export function SearchDashboard({
   }, [isSearching, hasSearched, startTime]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      triggerSearch();
+    if (e.key === "Enter") triggerSearch();
+    if (e.key === "Escape") {
+      setQuery("");
+      setHasSearched(false);
+      searchInputRef.current?.blur();
     }
   };
 
+  // Debounced search on option changes
   useEffect(() => {
     if (query.trim().length > 0 && hasSearched) {
-      const handler = setTimeout(() => {
-        triggerSearch();
-      }, 400);
+      const handler = setTimeout(triggerSearch, 300);
       return () => clearTimeout(handler);
     }
-  }, [threshold, searchType, triggerSearch, query, hasSearched]);
+  }, [threshold, searchType, exactMatch]);
 
   useEffect(() => {
     onGetNGrams(ngramN);
   }, [ngramN, onGetNGrams]);
 
   const heatmapData = useMemo(() => {
-    if (matches.length === 0) return Array(60).fill(0);
-    const buckets = Array(60).fill(0);
+    if (matches.length === 0) return Array(40).fill(0);
+    const buckets = Array(40).fill(0);
     const maxTime = matches.reduce((max, m) => Math.max(max, m.end), 60);
     matches.forEach(m => {
-      const bucketIdx = Math.floor((m.start / maxTime) * 59);
-      if (bucketIdx >= 0 && bucketIdx < 60) buckets[bucketIdx]++;
+      const bucketIdx = Math.floor((m.start / maxTime) * 39);
+      if (bucketIdx >= 0 && bucketIdx < 40) buckets[bucketIdx]++;
     });
     const maxVal = Math.max(...buckets, 1);
     return buckets.map(v => v / maxVal);
   }, [matches]);
+
+  const totalDuration = useMemo(() => 
+    matches.reduce((acc, m) => acc + (m.end - m.start), 0),
+    [matches]
+  );
 
   const clearSearch = () => {
     setQuery("");
@@ -90,215 +112,211 @@ export function SearchDashboard({
     searchInputRef.current?.focus();
   };
 
+  const currentMode = searchModes.find(m => m.id === searchType)!;
+
   return (
-    <div className="space-y-6">
-      <section className="bg-bg-secondary p-8 technical-border flex flex-col shadow-technical relative overflow-hidden min-h-[700px]">
-        {/* Search Input Bar */}
-        <div className="mb-8 relative z-10">
-          <div className="relative group">
-            <div className="absolute inset-y-0 left-6 flex items-center pointer-events-none text-text-muted text-xl group-focus-within:text-accent-orange transition-colors">
-              <Search size={24} />
+    <div className="space-y-4">
+      {/* Search Bar + Mode Selector */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="glass-card rounded-xl p-4"
+      >
+        {/* Search Input Row */}
+        <div className="flex gap-3 mb-4">
+          <div className="flex-1 relative">
+            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+              <Search className={`w-5 h-5 transition-colors ${isSearching ? 'text-accent-primary animate-pulse' : query ? 'text-accent-primary' : 'text-text-muted'}`} />
             </div>
             <input
               ref={searchInputRef}
               type="text"
-              placeholder={searchType === "mash" ? "ENTER WORD FOR MASHUP..." : `SEARCH ${searchType.toUpperCase()} IN INDEX...`}
-              className="w-full bg-white border border-border-strong rounded-none pl-16 pr-32 py-6 text-xl font-mono text-text-main focus:outline-none focus:border-accent-orange focus:ring-1 focus:ring-accent-orange transition-all placeholder:text-text-muted/50 uppercase"
+              placeholder={`Search ${currentMode.label.toLowerCase()}...`}
+              className="w-full bg-bg-secondary/80 border border-border-default rounded-lg pl-12 pr-12 py-3.5 text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary focus:ring-2 focus:ring-accent-primary-glow transition-all"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
             />
-            <div className="absolute right-4 inset-y-4 flex gap-2">
-              {query && (
-                <button 
-                  onClick={clearSearch}
-                  className="px-4 text-text-muted hover:text-accent-red transition-colors"
-                >
-                  <X size={20} />
-                </button>
-              )}
-            <button 
-                onClick={triggerSearch} 
-                disabled={isSearching}
-                className={`px-8 h-full font-bold text-xs uppercase tracking-widest transition-all active:translate-y-px shadow-sm flex items-center gap-2 border border-transparent ${
-                  isSearching ? "bg-bg-main text-text-muted cursor-not-allowed border-border-main" :
-                  "bg-accent-orange hover:bg-orange-600 text-white shadow-md active:shadow-none"
-                }`}
-              >
-                {isSearching ? <Loader2 size={14} className="animate-spin" /> : null}
-                {isSearching ? "SCANNING" : "SEARCH"}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Controls Bar */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10 relative z-10 p-2 bg-white border border-border-main">
-          <div className="space-y-1 pl-4">
-            <h2 className="text-xl font-black tracking-tight flex items-center gap-2 text-text-main">
-              <Activity className="text-accent-blue" size={20} />
-              RESULTS
-            </h2>
-            <AnimatePresence>
-              {searchTime && !isSearching && matches.length > 0 && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex items-center gap-2 text-[10px] font-bold text-text-muted uppercase tracking-widest"
-                >
-                  <Sparkles size={10} className="text-accent-orange" />
-                  Found {matches.length} results in {searchTime.toFixed(2)}s
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-          
-          <div className="flex flex-wrap items-center gap-4 pr-2">
-            <div className="flex p-1 bg-bg-main border border-border-main">
-              {["fragment", "sentence", "semantic"].map((t) => (
-                <button 
-                  key={t}
-                  onClick={() => setSearchType(t as SearchType)} 
-                  className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all rounded-none ${searchType === t ? "bg-white text-accent-blue shadow-sm border border-border-main" : "text-text-muted hover:text-text-main"}`}
-                >
-                  {t}
-                </button>
-              ))}
-              <div className="w-px bg-border-main mx-1 my-1"></div>
+            {query && (
               <button 
-                onClick={() => setSearchType("mash")} 
-                className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all rounded-none ${searchType === "mash" ? "bg-accent-blue text-white shadow-sm" : "text-text-muted hover:text-text-main"}`}
+                onClick={clearSearch}
+                className="absolute right-4 inset-y-0 flex items-center text-text-muted hover:text-accent-danger transition-colors"
               >
-                Mashup
+                <X className="w-4 h-4" />
               </button>
-            </div>
+            )}
           </div>
+          <button 
+            onClick={triggerSearch} 
+            disabled={isSearching || !query.trim()}
+            className="btn-primary px-6 shrink-0"
+          >
+            {isSearching ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Zap className="w-4 h-4" />
+            )}
+            <span className="hidden sm:inline">{isSearching ? "Searching" : "Search"}</span>
+          </button>
         </div>
 
-        {/* Threshold Slider */}
-        <AnimatePresence>
+        {/* Mode Selector - Always Visible */}
+        <div className="flex flex-wrap items-center gap-2">
+          {searchModes.map((mode) => (
+            <button
+              key={mode.id}
+              onClick={() => setSearchType(mode.id)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                searchType === mode.id 
+                  ? 'bg-accent-primary text-white shadow-lg shadow-accent-primary/25' 
+                  : 'bg-bg-elevated text-text-secondary hover:text-text-primary hover:bg-bg-secondary border border-border-subtle'
+              }`}
+            >
+              <mode.icon className="w-4 h-4" />
+              <span>{mode.label}</span>
+              <span className={`text-xs ${searchType === mode.id ? 'text-white/70' : 'text-text-muted'}`}>
+                {mode.desc}
+              </span>
+            </button>
+          ))}
+
+          {/* Divider */}
+          <div className="w-px h-6 bg-border-default mx-1" />
+
+          {/* Exact Match Toggle (Fragment only) */}
+          {searchType === "fragment" && (
+            <button
+              onClick={() => setExactMatch(!exactMatch)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                exactMatch 
+                  ? 'bg-accent-secondary text-white' 
+                  : 'bg-bg-elevated text-text-secondary hover:text-text-primary border border-border-subtle'
+              }`}
+            >
+              <Target className="w-4 h-4" />
+              Exact
+            </button>
+          )}
+
+          {/* Semantic Threshold */}
           {searchType === "semantic" && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mb-8 px-5 py-4 bg-white border border-border-main relative z-10 flex items-center gap-6"
-            >
-              <div className="flex-1">
-                <div className="flex justify-between items-center mb-2">
-                  <div className="flex items-center gap-2">
-                    <Percent size={12} className="text-accent-blue" />
-                    <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Similarity Threshold</span>
-                  </div>
-                  <span className="text-xs font-mono font-bold text-accent-blue bg-bg-secondary px-2 py-0.5 border border-border-main">{Math.round(threshold * 100)}%</span>
-                </div>
-                <input type="range" min="0.1" max="0.9" step="0.05" value={threshold} onChange={(e) => setThreshold(parseFloat(e.target.value))} className="w-full h-1 bg-border-main rounded-none appearance-none cursor-pointer accent-accent-blue" />
-              </div>
-              <div className="w-1/3 text-[9px] text-text-muted flex items-start gap-2 border-l border-border-main pl-6 font-mono">
-                <Info size={14} className="shrink-0 text-text-main" />
-                Higher values return more precise matches but fewer results.
-              </div>
-            </motion.div>
+            <div className="flex items-center gap-3 px-3 py-2 bg-bg-elevated rounded-lg border border-border-subtle">
+              <Waves className="w-4 h-4 text-accent-secondary" />
+              <input 
+                type="range" 
+                min="0.1" 
+                max="0.9" 
+                step="0.05" 
+                value={threshold} 
+                onChange={(e) => setThreshold(parseFloat(e.target.value))} 
+                className="w-24 h-1 bg-border-default rounded-full appearance-none cursor-pointer accent-accent-secondary"
+              />
+              <span className="text-xs font-mono font-bold text-accent-secondary w-10">{Math.round(threshold * 100)}%</span>
+            </div>
           )}
-        </AnimatePresence>
+        </div>
+      </motion.div>
 
-        {/* Status Messages */}
-        <AnimatePresence>
-          {status === "transcribing" && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mb-6 p-6 bg-white border border-accent-orange/50 relative z-10 border-l-4 border-l-accent-orange"
-            >
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-accent-orange animate-pulse" />
-                  <span className="text-xs font-black text-accent-orange uppercase tracking-[0.2em]">Whisper AI Transcription in Progress</span>
-                </div>
-                <span className="text-xs font-mono text-text-main font-bold">{Math.round(progress)}%</span>
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+        {/* Results Panel */}
+        <motion.section 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+          className="xl:col-span-3 glass-card rounded-xl p-5 flex flex-col"
+          style={{ minHeight: '500px', maxHeight: 'calc(100vh - 380px)' }}
+        >
+          {/* Results Header */}
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-border-subtle">
+            <div className="flex items-center gap-3">
+              <Activity className="w-4 h-4 text-accent-secondary" />
+              <span className="font-semibold text-text-primary">Results</span>
+              {hasSearched && !isSearching && (
+                <span className="text-sm text-text-muted">
+                  {matches.length} match{matches.length !== 1 ? 'es' : ''}
+                  {searchTime && ` in ${searchTime.toFixed(2)}s`}
+                </span>
+              )}
+            </div>
+            {matches.length > 0 && (
+              <div className="flex items-center gap-4 text-xs text-text-muted">
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {totalDuration.toFixed(1)}s total
+                </span>
               </div>
-              <div className="w-full bg-bg-main h-2 overflow-hidden border border-border-main">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                  className="h-full bg-accent-orange"
-                />
-              </div>
-              <p className="mt-2 text-[10px] text-text-muted font-mono">_process::extracting_dialog_patterns</p>
-            </motion.div>
-          )}
+            )}
+          </div>
 
-          {status === "exporting" && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mb-6 p-6 bg-white border border-green-600/50 relative z-10 border-l-4 border-l-green-600"
-            >
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" />
-                  <span className="text-xs font-black text-green-600 uppercase tracking-[0.2em]">Exporting Supercut Compilation</span>
-                </div>
-                <span className="text-xs font-mono text-green-600 font-bold">{Math.round(progress)}%</span>
-              </div>
-              <div className="w-full bg-bg-main h-2 overflow-hidden border border-border-main">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                  className="h-full bg-green-600"
-                />
-              </div>
-              <p className="mt-2 text-[10px] text-text-muted font-mono">_render::concatenating_clips</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col md:flex-row gap-8 min-h-0 relative z-10">
-          <div className="flex-1 space-y-4 overflow-y-auto pr-4 custom-scrollbar">
+          {/* Results Content */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
             <AnimatePresence mode="wait">
-              {isSearching ? (
+              {/* Loading State */}
+              {isSearching && (
                 <motion.div 
-                  key="searching"
+                  key="loading"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="h-full flex flex-col items-center justify-center p-12"
+                  className="h-full flex flex-col items-center justify-center py-12"
                 >
-                  <div className="relative mb-8">
-                    <div className="w-16 h-16 border-4 border-border-main border-t-accent-blue rounded-full animate-spin"></div>
+                  <div className="relative mb-6">
+                    <div className="w-16 h-16 border-3 border-border-default border-t-accent-primary rounded-full animate-spin" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <currentMode.icon className="w-6 h-6 text-accent-primary" />
+                    </div>
                   </div>
-                  <p className="text-xl font-black uppercase tracking-[0.2em] text-accent-blue mb-2">
-                    {searchType === "semantic" ? "Neural Mapping..." : "Scanning Database..."}
+                  <p className="text-sm font-medium text-text-primary mb-1">
+                    {searchType === "semantic" ? "Neural search..." : "Scanning transcripts..."}
                   </p>
-                  <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-none border border-border-main shadow-sm">
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-600 animate-pulse" />
-                    <span className="text-[10px] font-mono text-text-muted uppercase tracking-widest">Engine Active</span>
-                  </div>
+                  <p className="text-xs text-text-muted">Searching for "{query}"</p>
                 </motion.div>
-              ) : matches.length > 0 ? (
+              )}
+
+              {/* Error State */}
+              {!isSearching && searchError && (
+                <motion.div 
+                  key="error"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="h-full flex flex-col items-center justify-center py-12"
+                >
+                  <div className="w-14 h-14 rounded-full bg-accent-danger/10 flex items-center justify-center mb-4">
+                    <AlertCircle className="w-7 h-7 text-accent-danger" />
+                  </div>
+                  <p className="text-sm font-medium text-text-primary mb-1">Search failed</p>
+                  <p className="text-xs text-text-muted max-w-sm text-center">
+                    {searchError.message || "An error occurred while searching"}
+                  </p>
+                </motion.div>
+              )}
+
+              {/* Results List */}
+              {!isSearching && !searchError && matches.length > 0 && (
                 <motion.div 
                   key="results"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="grid grid-cols-1 gap-4 pb-8"
+                  className="space-y-3 pb-4"
                 >
                   {matches.map((match, idx) => (
                     <motion.div 
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.05 }}
+                      transition={{ delay: Math.min(idx * 0.03, 0.3) }}
                       key={idx} 
-                      className="p-4 bg-white hover:bg-white rounded-none border border-border-main hover:border-accent-blue transition-all group shadow-sm flex gap-6 relative"
+                      className="group p-3 bg-bg-secondary/40 hover:bg-bg-elevated border border-border-subtle hover:border-accent-secondary/40 rounded-lg transition-all flex gap-4"
+                      onMouseEnter={() => setHoveringVideo(idx)}
+                      onMouseLeave={() => setHoveringVideo(null)}
                     >
-                      <div className="w-48 aspect-video bg-black rounded-sm shrink-0 overflow-hidden relative group/vid border border-border-main">
+                      {/* Video Thumbnail */}
+                      <div className="w-36 aspect-video rounded-md overflow-hidden relative bg-bg-main shrink-0 border border-border-default">
                         <video 
-                          className="w-full h-full object-cover opacity-80 group-hover/vid:opacity-100 transition-opacity"
-                          onLoadedMetadata={(e) => {
-                            e.currentTarget.currentTime = match.start;
-                          }}
+                          className="w-full h-full object-cover"
+                          onLoadedMetadata={(e) => { e.currentTarget.currentTime = match.start; }}
                           onMouseOver={(e) => e.currentTarget.play()}
                           onMouseOut={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = match.start; }}
                           muted
@@ -306,120 +324,157 @@ export function SearchDashboard({
                         >
                           <source src={convertFileSrc(match.file)} type="video/mp4" />
                         </video>
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none group-hover/vid:opacity-0 transition-opacity bg-black/10">
-                           <Play size={20} className="text-white fill-white" />
-                        </div>
-                        <div className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/80 rounded-none text-[9px] font-mono text-white border border-white/20">
-                          {Math.floor(match.start / 60)}:{(match.start % 60).toFixed(0).padStart(2, '0')}
-                        </div>
-                      </div>
-                      
-                      <div className="flex-1 min-w-0 flex flex-col py-1">
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-[9px] font-black text-accent-blue bg-bg-secondary px-2 py-0.5 border border-border-main uppercase tracking-widest truncate max-w-[200px]">
-                              {match.file.split("/").pop()}
-                            </span>
-                            {match.score && (
-                              <div className="flex items-center gap-1.5 text-[9px] font-mono font-bold text-accent-orange bg-white px-2 py-0.5 border border-accent-orange/30">
-                                <Sparkles size={8} />
-                                {Math.round(match.score * 100)}%
-                              </div>
-                            )}
+                        
+                        {/* Play Overlay */}
+                        <div className={`absolute inset-0 flex items-center justify-center bg-black/30 transition-opacity ${hoveringVideo === idx ? 'opacity-0' : 'opacity-100'}`}>
+                          <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
+                            <Play className="w-3.5 h-3.5 text-bg-main ml-0.5" fill="currentColor" />
                           </div>
                         </div>
-                        
-                        <div className="flex-1">
-                          <p className="text-text-main text-sm leading-relaxed font-medium line-clamp-3 relative font-serif italic">
-                            "{match.content}"
-                          </p>
+
+                        {/* Time Badge */}
+                        <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/80 rounded text-[10px] font-mono text-white">
+                          {Math.floor(match.start / 60)}:{(match.start % 60).toFixed(0).padStart(2, '0')}
+                        </div>
+
+                        {/* Score Badge */}
+                        {match.score && (
+                          <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-accent-primary/90 rounded text-[10px] font-bold text-white flex items-center gap-0.5">
+                            <TrendingUp className="w-2.5 h-2.5" />
+                            {Math.round(match.score * 100)}%
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Content */}
+                      <div className="flex-1 min-w-0 flex flex-col py-0.5">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="text-xs text-text-muted truncate max-w-[200px]">
+                            {match.file.split("/").pop()}
+                          </span>
+                          <span className="text-[10px] text-text-muted">
+                            {(match.end - match.start).toFixed(1)}s
+                          </span>
                         </div>
                         
-                        <div className="mt-3 flex items-center gap-3">
+                        <p className="text-sm text-text-primary leading-relaxed flex-1 line-clamp-2">
+                          "{match.content}"
+                        </p>
+                        
+                        <div className="flex items-center gap-2 mt-2">
                           <button 
                             onClick={(e) => {
                               const card = e.currentTarget.closest('.group');
                               const video = card?.querySelector('video');
-                              if (video) {
-                                video.currentTime = match.start;
-                                video.play();
-                              }
+                              if (video) { video.currentTime = match.start; video.play(); }
                             }}
-                            className="px-3 py-1.5 bg-white hover:bg-accent-blue hover:text-white text-accent-blue text-[9px] font-black uppercase tracking-widest border border-accent-blue transition-all flex items-center gap-2"
+                            className="btn-secondary py-1 px-2.5 text-[10px]"
                           >
-                            <Play size={10} fill="currentColor" />
-                            Preview
+                            <Play className="w-3 h-3" fill="currentColor" />
+                            Play
                           </button>
                           <button 
                             onClick={() => onOpenFolder(match.file)}
-                            className="px-3 py-1.5 bg-bg-secondary hover:bg-border-main text-text-muted text-[9px] font-black uppercase tracking-widest border border-border-main transition-all flex items-center gap-2"
+                            className="btn-secondary py-1 px-2.5 text-[10px]"
                           >
-                            <FolderOpen size={10} />
-                            Source
+                            <FolderOpen className="w-3 h-3" />
+                            Open
                           </button>
                         </div>
                       </div>
                     </motion.div>
                   ))}
                 </motion.div>
-              ) : hasSearched ? (
+              )}
+
+              {/* No Results */}
+              {!isSearching && !searchError && hasSearched && matches.length === 0 && (
                 <motion.div 
-                  key="no-results"
+                  key="empty"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="h-full flex flex-col items-center justify-center text-text-muted p-12"
+                  exit={{ opacity: 0 }}
+                  className="h-full flex flex-col items-center justify-center py-12"
                 >
-                  <X size={48} className="opacity-20 mb-4" />
-                  <p className="text-lg font-black uppercase tracking-[0.2em] mb-2 text-text-main">Zero Matches</p>
-                  <p className="text-xs font-mono">Try a different keyword or lower the threshold</p>
+                  <div className="w-14 h-14 rounded-full bg-bg-elevated flex items-center justify-center mb-4">
+                    <X className="w-7 h-7 text-text-muted" />
+                  </div>
+                  <p className="text-sm font-medium text-text-primary mb-1">No matches found</p>
+                  <p className="text-xs text-text-muted">Try different keywords or adjust the threshold</p>
                 </motion.div>
-              ) : (
+              )}
+
+              {/* Idle State */}
+              {!isSearching && !hasSearched && (
                 <motion.div 
                   key="idle"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="h-full flex flex-col items-center justify-center text-text-main p-12"
+                  className="h-full flex flex-col items-center justify-center py-12"
                 >
-                  <div className="grid grid-cols-2 gap-4 max-w-md">
-                    <div className="p-6 bg-white border border-border-main text-center space-y-3 hover:border-accent-blue transition-colors group">
-                      <Hash className="mx-auto text-text-muted group-hover:text-accent-blue" size={24} />
-                      <p className="text-[10px] font-black uppercase tracking-widest">Fragment</p>
-                      <p className="text-[9px] text-text-muted leading-tight">Word-level precision.</p>
-                    </div>
-                    <div className="p-6 bg-white border border-border-main text-center space-y-3 hover:border-accent-blue transition-colors group">
-                      <Activity className="mx-auto text-text-muted group-hover:text-accent-blue" size={24} />
-                      <p className="text-[10px] font-black uppercase tracking-widest">Sentence</p>
-                      <p className="text-[9px] text-text-muted leading-tight">Full sentence matches.</p>
-                    </div>
-                    <div className="p-6 bg-white border border-border-main text-center space-y-3 hover:border-accent-orange transition-colors group">
-                      <Sparkles className="mx-auto text-text-muted group-hover:text-accent-orange" size={24} />
-                      <p className="text-[10px] font-black uppercase tracking-widest">Semantic</p>
-                      <p className="text-[9px] text-text-muted leading-tight">Conceptual search.</p>
-                    </div>
-                    <div className="p-6 bg-white border border-border-main text-center space-y-3 hover:border-accent-red transition-colors group">
-                      <Scissors className="mx-auto text-text-muted group-hover:text-accent-red" size={24} />
-                      <p className="text-[10px] font-black uppercase tracking-widest">Mashup</p>
-                      <p className="text-[9px] text-text-muted leading-tight">Randomized clips.</p>
-                    </div>
+                  <div className="w-16 h-16 rounded-full bg-bg-elevated flex items-center justify-center mb-4">
+                    <Search className="w-8 h-8 text-text-muted" />
                   </div>
+                  <p className="text-sm font-medium text-text-primary mb-1">Ready to search</p>
+                  <p className="text-xs text-text-muted">Enter a query and press Enter or click Search</p>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
-          {/* NGrams Panel */}
-          <div className="w-80 bg-white border border-border-main flex flex-col overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-border-main flex justify-between items-center bg-bg-secondary">
+          {/* Export Button */}
+          <AnimatePresence>
+            {matches.length > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="mt-4 pt-4 border-t border-border-subtle"
+              >
+                <button 
+                  onClick={() => onExport(matches)}
+                  disabled={status === "exporting"}
+                  className="w-full btn-primary py-3"
+                >
+                  {status === "exporting" ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Exporting... {Math.round(progress)}%
+                    </>
+                  ) : (
+                    <>
+                      <Scissors className="w-4 h-4" />
+                      Export Supercut ({matches.length} clips, {totalDuration.toFixed(1)}s)
+                    </>
+                  )}
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.section>
+
+        {/* Side Panel: N-Grams + Heatmap */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+          className="space-y-4"
+        >
+          {/* N-Grams Panel */}
+          <div className="glass-card rounded-xl p-4 flex flex-col" style={{ height: '350px' }}>
+            <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <BarChart3 size={14} className="text-accent-blue" />
-                <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">LINGUISTIC N-GRAMS</span>
+                <BarChart3 className="w-4 h-4 text-accent-secondary" />
+                <span className="text-sm font-semibold text-text-primary">Top Phrases</span>
               </div>
-              <div className="flex p-0.5 bg-white border border-border-main">
+              <div className="flex bg-bg-elevated rounded-md p-0.5">
                 {[1, 2, 3].map(n => (
                   <button 
                     key={n}
                     onClick={() => setNgramN(n)}
-                    className={`px-2 py-0.5 text-[9px] font-black transition-all ${ngramN === n ? "bg-accent-blue text-white" : "text-text-muted hover:text-text-main"}`}
+                    className={`px-2 py-1 text-[10px] font-bold rounded transition-all ${
+                      ngramN === n ? 'bg-accent-secondary text-white' : 'text-text-muted hover:text-text-primary'
+                    }`}
                   >
                     {n}G
                   </button>
@@ -427,99 +482,72 @@ export function SearchDashboard({
               </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-              <AnimatePresence mode="wait">
-                {isNgramsLoading ? (
-                  <div className="h-full flex flex-col items-center justify-center p-8 space-y-4 opacity-50">
-                    <Loader2 size={24} className="animate-spin text-text-muted" />
-                    <span className="text-[9px] font-black uppercase tracking-widest text-text-muted">Analyzing...</span>
-                  </div>
-                ) : ngrams.length > 0 ? (
-                  <div className="space-y-1">
-                    {ngrams.slice(0, 50).map((g, i) => (
-                      <button
-                        key={i}
-                        onClick={() => {
-                          setQuery(g.ngram);
-                          setHasSearched(true);
-                          setStartTime(performance.now());
-                          onSearch(g.ngram, searchType, threshold);
-                          searchInputRef.current?.focus();
-                        }}
-                        className="w-full group text-left p-2 rounded-sm hover:bg-bg-secondary border border-transparent hover:border-border-main transition-all flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-5 h-5 bg-white border border-border-main flex items-center justify-center shrink-0">
-                            <span className="text-[9px] font-mono text-text-muted">{i + 1}</span>
-                          </div>
-                          <span className="text-xs text-text-main font-medium truncate pr-2">{g.ngram}</span>
-                        </div>
-                        <span className="text-[9px] font-mono font-bold text-accent-blue">{g.count}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="h-full flex flex-col items-center justify-center p-8 text-center opacity-40">
-                    <BarChart3 size={24} className="mb-2 text-text-muted" />
-                    <p className="text-[10px] font-black uppercase tracking-widest text-text-muted">
-                      No Data
-                    </p>
-                  </div>
-                )}
-              </AnimatePresence>
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1">
+              {isNgramsLoading ? (
+                <div className="h-full flex flex-col items-center justify-center">
+                  <Loader2 className="w-5 h-5 text-text-muted animate-spin mb-2" />
+                  <span className="text-xs text-text-muted">Loading...</span>
+                </div>
+              ) : ngrams.length > 0 ? (
+                ngrams.slice(0, 25).map((g, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setQuery(g.ngram);
+                      setHasSearched(true);
+                      setStartTime(performance.now());
+                      onSearch(g.ngram, searchType, threshold, exactMatch);
+                    }}
+                    className="w-full flex items-center justify-between p-2 rounded-md hover:bg-bg-elevated transition-all group text-left"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-5 h-5 rounded bg-bg-elevated flex items-center justify-center text-[10px] font-mono text-text-muted shrink-0 group-hover:bg-accent-secondary group-hover:text-white transition-colors">
+                        {i + 1}
+                      </span>
+                      <span className="text-sm text-text-primary truncate group-hover:text-accent-primary transition-colors">
+                        {g.ngram}
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-accent-secondary ml-2">{g.count}</span>
+                  </button>
+                ))
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                  <Volume2 className="w-6 h-6 text-text-muted mb-2 opacity-50" />
+                  <p className="text-xs text-text-muted">Select a video to see phrases</p>
+                </div>
+              )}
             </div>
           </div>
-        </div>
 
-        <AnimatePresence>
-          {matches.length > 0 && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-8 flex justify-center sticky bottom-8 z-50 pointer-events-none"
-            >
-              <button 
-                onClick={() => onExport(matches)}
-                className="pointer-events-auto px-12 py-4 bg-accent-blue hover:bg-blue-700 text-white text-xs font-black uppercase tracking-[0.2em] shadow-xl active:translate-y-px flex items-center gap-3 group border border-transparent"
-              >
-                <Scissors size={18} className="group-hover:rotate-12 transition-transform" />
-                Export Compilation ({matches.length})
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </section>
+          {/* Heatmap */}
+          <div className="glass-card rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-accent-danger" />
+                <span className="text-sm font-semibold text-text-primary">Timeline</span>
+              </div>
+              <span className="text-xs text-text-muted">{matches.length} hits</span>
+            </div>
 
-      {/* Timeline Heatmap */}
-      <section className="bg-bg-secondary p-8 technical-border shadow-technical relative overflow-hidden">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-sm font-black text-text-muted uppercase tracking-[0.2em] flex items-center gap-3">
-            <div className="w-2.5 h-2.5 rounded-none bg-accent-red animate-pulse"></div>
-            Search Density
-          </h2>
-          <div className="flex items-center gap-4 text-[10px] font-mono text-text-muted uppercase tracking-widest">
-            <span className="flex items-center gap-1.5"><Clock size={10} /> Normalized Scope</span>
-            <span className="w-px h-3 bg-border-main"></span>
-            <span>{matches.length} Keys</span>
+            <div className="h-8 bg-bg-secondary/50 rounded-md border border-border-subtle flex items-end overflow-hidden p-1 gap-px">
+              {heatmapData.map((val, i) => (
+                <motion.div 
+                  key={i} 
+                  initial={{ height: "15%" }}
+                  animate={{ height: `${Math.max(val * 100, 15)}%` }}
+                  transition={{ delay: i * 0.01, duration: 0.3 }}
+                  className={`flex-1 rounded-sm ${
+                    val > 0.6 ? "bg-accent-primary" : 
+                    val > 0.2 ? "bg-accent-secondary" :
+                    val > 0 ? "bg-text-muted/50" : "bg-border-subtle"
+                  }`}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-
-        <div className="h-16 w-full bg-white border border-border-main flex items-end overflow-hidden p-2 gap-0.5">
-          {heatmapData.map((val, i) => (
-            <motion.div 
-              key={i} 
-              initial={{ height: "5%" }}
-              animate={{ height: `${Math.max(val * 100, 5)}%` }}
-              transition={{ delay: i * 0.01, duration: 0.5 }}
-              className={`flex-1 transition-all duration-300 ${
-                val > 0 
-                  ? "bg-accent-orange" 
-                  : "bg-bg-secondary"
-              }`}
-            />
-          ))}
-        </div>
-      </section>
+        </motion.div>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import os
 import time
 import gc
-from typing import List, Optional, Callable
+import platform
+import subprocess
+from typing import List, Optional, Callable, Dict, Any
 from tqdm import tqdm
 from moviepy import VideoFileClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips, TextClip, CompositeVideoClip
 
@@ -11,6 +13,63 @@ from ..utils.helpers import setup_logger, get_media_type
 from ..utils.exceptions import ExportError, InvalidOutputFormatError, ExportFailedError
 
 logger = setup_logger(__name__)
+
+
+def get_encoding_params() -> Dict[str, Any]:
+    """
+    Detect available hardware encoders and return appropriate ffmpeg parameters.
+    
+    Returns:
+        Dictionary of parameters to pass to write_videofile
+    """
+    params = {
+        "codec": "libx264",
+        "audio_codec": "aac",
+        "bitrate": "8000k",
+        "audio_bitrate": "192k",
+        "preset": "medium",
+        "threads": 4
+    }
+    
+    try:
+        # Check ffmpeg encoders
+        result = subprocess.run(
+            ["ffmpeg", "-encoders"], 
+            capture_output=True, 
+            text=True
+        )
+        output = result.stdout
+        
+        # macOS: VideoToolbox
+        if platform.system() == "Darwin" and "h264_videotoolbox" in output:
+            logger.info("Enabling hardware acceleration: h264_videotoolbox")
+            params["codec"] = "h264_videotoolbox"
+            # VideoToolbox doesn't use x264 presets, so we remove it to be safe
+            if "preset" in params:
+                del params["preset"]
+            # Typically faster if we let the hardware handle bitrate allocation, 
+            # but we keep bitrate for quality control.
+            return params
+
+        # Windows/Linux: NVIDIA NVENC
+        if "h264_nvenc" in output:
+            logger.info("Enabling hardware acceleration: h264_nvenc")
+            params["codec"] = "h264_nvenc"
+            params["preset"] = "p4" # Medium preset for NVENC
+            return params
+            
+        # Intel QuickSync (optional fallback)
+        if "h264_qsv" in output:
+             logger.info("Enabling hardware acceleration: h264_qsv")
+             params["codec"] = "h264_qsv"
+             if "preset" in params:
+                 del params["preset"]
+             return params
+
+    except Exception as e:
+        logger.warning(f"Failed to detect hardware encoders: {e}. Falling back to libx264.")
+        
+    return params
 
 
 def get_input_type(composition: List[dict]) -> str:
@@ -116,19 +175,21 @@ def create_supercut(composition: List[dict], outputfile: str, progress_callback:
 
                 logger.info("[+] Writing video output.")
                 
+                
+                # Get hardware capabilities
+                encoding_params = get_encoding_params()
+                
                 # For progress tracking: MoviePy's proglog integration is unreliable
                 # Instead, we'll use a simple approach: suppress verbose output and update after completion
-                final_clip.write_videofile(
-                    outputfile,
-                    codec="libx264",
-                    bitrate="8000k",
-                    audio_bitrate="192k",
-                    preset="medium",
-                    temp_audiofile=f"{outputfile}_temp-audio{time.time()}.m4a",
-                    remove_temp=True,
-                    audio_codec="aac",
-                    logger='bar'  # Use simple progress bar instead of verbose logging
-                )
+                
+                write_kwargs = {
+                    "temp_audiofile": f"{outputfile}_temp-audio{time.time()}.m4a",
+                    "remove_temp": True,
+                    "logger": 'bar',
+                    **encoding_params
+                }
+                
+                final_clip.write_videofile(outputfile, **write_kwargs)
                 
                 # Update progress to completion after write finishes
                 if progress_callback:
@@ -246,17 +307,16 @@ def create_supercut_in_batches(composition: List[dict], outputfile: str, progres
             clips = [VideoFileClip(f) for f in batch_files]
             final = concatenate_videoclips(clips, method="compose")
             
-            final.write_videofile(
-                outputfile,
-                codec="libx264",
-                bitrate="8000k",
-                audio_bitrate="192k",
-                preset="medium",
-                temp_audiofile=f"{outputfile}_final_temp-audio.m4a",
-                remove_temp=True,
-                audio_codec="aac",
-                logger='bar'
-            )
+            
+            encoding_params = get_encoding_params()
+            write_kwargs = {
+                "temp_audiofile": f"{outputfile}_final_temp-audio.m4a",
+                "remove_temp": True,
+                "logger": 'bar',
+                **encoding_params
+            }
+            
+            final.write_videofile(outputfile, **write_kwargs)
             
             if progress_callback:
                 progress_callback(1.0)
@@ -334,15 +394,14 @@ def export_individual_clips(composition: List[dict], outputfile: str, progress_c
                         clip_prog_start = i / len(composition)
                         clip_prog_end = (i + 1) / len(composition)
                         
+                        
+                        encoding_params = get_encoding_params()
+                        
                         clip.write_videofile(
                             clip_filename,
-                            codec="libx264",
-                            bitrate="8000k",
-                            audio_bitrate="192k",
-                            preset="medium",
                             remove_temp=True,
-                            audio_codec="aac",
-                            logger='bar'
+                            logger='bar',
+                            **encoding_params
                         )
                         
                         if progress_callback:

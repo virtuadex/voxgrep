@@ -18,7 +18,7 @@ logger = setup_logger("voxgrep.server", level=config.log_level)
 
 def get_session():
     """Dependency wrapper for database session."""
-    return _get_db_session()
+    yield from _get_db_session()
 
 def get_vector_store():
     """Dependency wrapper for vector store."""

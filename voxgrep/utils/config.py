@@ -32,8 +32,37 @@ MASH_PADDING = 0.05  # Micro-padding in seconds for word-level cuts (50ms)
 # ============================================================================
 DEFAULT_WHISPER_MODEL = "large-v3"
 DEFAULT_MLX_MODEL = "mlx-community/whisper-large-v3-mlx"
-DEFAULT_DEVICE = "cpu"
-DEFAULT_COMPUTE_TYPE = "int8"
+
+def get_best_device() -> str:
+    """Detect the best available device for transcription."""
+    import platform
+    try:
+        # Check for Apple Silicon (MLX)
+        if platform.system() == "Darwin" and platform.machine() == "arm64":
+            try:
+                import mlx_whisper
+                return "mlx"
+            except ImportError:
+                pass
+        
+        # Check for CUDA
+        import torch
+        if torch.cuda.is_available():
+            return "cuda"
+            
+        # Check for MPS (Metal Performance Shaders) - though faster-whisper support varies
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            # faster-whisper doesn't support mps directly usually, but we check anyway
+            # Keeping it safe: default to cpu if not MLX or CUDA for now
+            pass
+            
+    except ImportError:
+        pass
+        
+    return "cpu"
+
+DEFAULT_DEVICE = get_best_device()
+DEFAULT_COMPUTE_TYPE = "float16" if DEFAULT_DEVICE == "mlx" else "int8"
 
 
 # ============================================================================

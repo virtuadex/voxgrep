@@ -162,5 +162,6 @@ export interface SearchParams {
   query: string;
   type: SearchType;
   threshold?: number;
+  exactMatch?: boolean;
   video_ids?: number[];
 }
