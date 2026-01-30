@@ -1,15 +1,16 @@
 import random
-import subprocess
 import os
-import sys
+import re
 from typing import List, Union, Optional, Callable, Dict, Any
 
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 from rich import box
 
 from . import engine as search_module
 from . import exporter
+from .types import VoxGrepResult, SearchType
 from ..formats import vtt
 from ..utils.config import DEFAULT_PADDING, BATCH_SIZE
 from ..utils.helpers import setup_logger, ensure_list, ensure_directory_exists, get_media_type
@@ -21,17 +22,17 @@ logger = setup_logger(__name__)
 def get_file_duration(filepath: str) -> float:
     """
     Get the duration of a media file in seconds.
-    
+
     Args:
         filepath: Path to media file
-        
+
     Returns:
         Duration in seconds, or 0.0 if unable to determine
     """
     try:
         from moviepy import VideoFileClip, AudioFileClip
         media_type = get_media_type(filepath)
-        
+
         if media_type == "video":
             with VideoFileClip(filepath) as clip:
                 return clip.duration
@@ -40,9 +41,8 @@ def get_file_duration(filepath: str) -> float:
                 return clip.duration
     except Exception as e:
         logger.debug(f"Could not get duration for {filepath}: {e}")
-    
-    return 0.0
 
+    return 0.0
 
 
 def remove_overlaps(segments: List[dict]) -> List[dict]:
@@ -54,7 +54,7 @@ def remove_overlaps(segments: List[dict]) -> List[dict]:
 
     # Sort by start time
     segments = sorted(segments, key=lambda k: k["start"])
-    
+
     out = [segments[0]]
     for segment in segments[1:]:
         # Only merge if it's the same file
@@ -88,17 +88,244 @@ def pad_and_sync(
         # Ensure bounds
         new_segment["start"] = max(0, new_segment["start"])
         new_segment["end"] = max(0, new_segment["end"])
-        
+
         processed.append(new_segment)
 
     # Merge overlaps that were created by padding
     return remove_overlaps(processed)
 
 
+def _handle_demo_mode(
+    segments: List[dict],
+    query: List[str],
+    query_str: str,
+    exact_match: bool,
+    console: Optional[Console] = None,
+) -> VoxGrepResult:
+    """
+    Handle demo mode: display search results without exporting.
+
+    Args:
+        segments: List of matched segments.
+        query: List of query strings.
+        query_str: Joined query string for display.
+        exact_match: Whether exact match mode was used.
+        console: Optional Rich console for formatted output.
+
+    Returns:
+        VoxGrepResult with demo mode results.
+    """
+    supercut_duration = sum(s['end'] - s['start'] for s in segments)
+
+    if console:
+        table = Table(title=f"Search Results ({len(segments)} segments)", box=box.ROUNDED)
+        table.add_column("File", style="cyan")
+        table.add_column("Start", justify="right", style="green")
+        table.add_column("End", justify="right", style="red")
+        table.add_column("Content", style="white")
+
+        for s in segments:
+            # Highlight search terms in content
+            content_text = Text(s['content'])
+            if query:
+                for q in query:
+                    # Create pattern based on exact_match setting
+                    if exact_match:
+                        pattern = r'\b' + re.escape(q) + r'\b'
+                    else:
+                        pattern = re.escape(q)
+
+                    # Find and highlight all matches
+                    for match in re.finditer(pattern, s['content'], re.IGNORECASE):
+                        start_pos = match.start()
+                        end_pos = match.end()
+                        content_text.stylize("bold yellow on blue", start_pos, end_pos)
+
+            table.add_row(
+                os.path.basename(s['file']),
+                f"{s['start']:.2f}s",
+                f"{s['end']:.2f}s",
+                content_text
+            )
+        console.print(table)
+    else:
+        for s in segments:
+            print(f"{s['file']} | {s['start']:.2f} - {s['end']:.2f} | {s['content']}")
+
+    return VoxGrepResult(
+        success=True,
+        clips_count=len(segments),
+        supercut_duration=supercut_duration,
+        search_query=query_str,
+        output_file=None,
+        mode="demo",
+        segments=segments,
+    )
+
+
+def _handle_preview_mode(
+    segments: List[dict],
+    query_str: str,
+    console: Optional[Console] = None,
+) -> VoxGrepResult:
+    """
+    Handle preview mode: launch MPV to preview the supercut.
+
+    Args:
+        segments: List of matched segments.
+        query_str: Joined query string for display.
+        console: Optional Rich console for formatted output.
+
+    Returns:
+        VoxGrepResult with preview mode results, or False on failure.
+    """
+    total_clip_duration = sum(s['end'] - s['start'] for s in segments)
+
+    # Display search results summary
+    if console:
+        stats_table = Table(title="Preview Statistics", box=box.ROUNDED, border_style="cyan")
+        stats_table.add_column("Metric", style="bold cyan", no_wrap=True)
+        stats_table.add_column("Value", style="bold white", justify="right")
+
+        stats_table.add_row("Clips Found", f"{len(segments)}")
+        stats_table.add_row("Total Duration", f"{total_clip_duration:.1f}s ({total_clip_duration/60:.1f}m)")
+
+        if segments:
+            first_match = segments[0]['start']
+            last_match = segments[-1]['end']
+            stats_table.add_row("First Match", f"{first_match:.1f}s ({first_match/60:.1f}m)")
+            stats_table.add_row("Last Match", f"{last_match:.1f}s ({last_match/60:.1f}m)")
+            stats_table.add_row("Time Span", f"{(last_match - first_match):.1f}s")
+
+        console.print()
+        console.print(stats_table)
+        console.print()
+        console.print("[bold yellow]Launching MPV Preview...[/bold yellow]")
+        console.print("[dim]Press 'q' to quit, Space to pause, Arrow keys to seek[/dim]\n")
+
+    success = mpv_utils.launch_mpv_preview(segments)
+
+    if success:
+        if console:
+            console.print()
+            console.print("[bold green]Preview Complete[/bold green]")
+
+        return VoxGrepResult(
+            success=True,
+            clips_count=len(segments),
+            supercut_duration=total_clip_duration,
+            search_query=query_str,
+            output_file=None,
+            mode="preview",
+            segments=segments,
+        )
+    else:
+        # Fallback: Create .mpv.edl file
+        edl_filename = "preview.mpv.edl"
+        exporter.export_mpv_edl(segments, edl_filename)
+
+        error_msg = "Could not launch mpv for preview."
+        install_instructions = mpv_utils.get_mpv_install_instructions()
+
+        logger.error(error_msg)
+        if console:
+            console.print(f"[bold red]Error:[/bold red] {error_msg}")
+            console.print(f"[yellow]{install_instructions}[/yellow]")
+            console.print(f"\n[bold cyan]Fallback:[/bold cyan] Created EDL file at [white]{os.path.abspath(edl_filename)}[/white]")
+            console.print("You can open this file with MPV manually.")
+
+        return VoxGrepResult(success=False, mode="preview")
+
+
+def _handle_export_mode(
+    segments: List[dict],
+    output: str,
+    query_str: str,
+    export_clips: bool = False,
+    write_vtt: bool = False,
+    progress_callback: Optional[Callable[[float], None]] = None,
+    burn_in_subtitles: bool = False,
+) -> VoxGrepResult:
+    """
+    Handle export mode: create supercut or individual clips.
+
+    Args:
+        segments: List of matched segments.
+        output: Output file path.
+        query_str: Joined query string for metadata.
+        export_clips: Whether to export individual clips.
+        write_vtt: Whether to write VTT subtitle file.
+        progress_callback: Optional callback for progress updates.
+        burn_in_subtitles: Whether to burn subtitles into video.
+
+    Returns:
+        VoxGrepResult with export statistics.
+    """
+    # Ensure output directory exists
+    ensure_directory_exists(os.path.dirname(os.path.abspath(output)))
+
+    # Export Logic
+    if export_clips:
+        exporter.export_individual_clips(
+            segments, output,
+            progress_callback=progress_callback,
+            burn_in_subtitles=burn_in_subtitles
+        )
+    elif output.endswith(".m3u"):
+        exporter.export_m3u(segments, output)
+    elif output.endswith(".mpv.edl"):
+        exporter.export_mpv_edl(segments, output)
+    elif output.endswith(".xml"):
+        exporter.export_xml(segments, output)
+    else:
+        # Create full supercut
+        if len(segments) > BATCH_SIZE:
+            exporter.create_supercut_in_batches(
+                segments, output,
+                progress_callback=progress_callback,
+                burn_in_subtitles=burn_in_subtitles
+            )
+        else:
+            exporter.create_supercut(
+                segments, output,
+                progress_callback=progress_callback,
+                burn_in_subtitles=burn_in_subtitles
+            )
+
+    # Write WebVTT if requested
+    if write_vtt:
+        vtt_path = os.path.splitext(output)[0] + ".vtt"
+        vtt.render(segments, vtt_path)
+        logger.info(f"Subtitle file written to: {vtt_path}")
+
+    # Calculate and return session statistics
+    supercut_duration = sum(s['end'] - s['start'] for s in segments)
+
+    # Get original file durations (cached per unique file)
+    unique_files = list(set(s['file'] for s in segments))
+    original_duration = sum(get_file_duration(f) for f in unique_files)
+
+    time_saved = max(0, original_duration - supercut_duration)
+    efficiency_percent = (time_saved / original_duration * 100) if original_duration > 0 else 0
+
+    return VoxGrepResult(
+        success=True,
+        clips_count=len(segments),
+        supercut_duration=supercut_duration,
+        original_duration=original_duration,
+        time_saved=time_saved,
+        efficiency_percent=efficiency_percent,
+        search_query=query_str,
+        output_file=output,
+        mode="export",
+        segments=segments,
+    )
+
+
 def voxgrep(
     files: Union[List[str], str],
     query: Union[List[str], str],
-    search_type: str = "sentence",
+    search_type: str | SearchType = "sentence",
     output: str = "supercut.mp4",
     resync: float = 0,
     padding: Optional[float] = None,
@@ -112,42 +339,40 @@ def voxgrep(
     console: Optional[Console] = None,
     progress_callback: Optional[Callable[[float], None]] = None,
     burn_in_subtitles: bool = False,
-) -> Union[bool, Dict[str, Any]]:
+) -> Union[bool, Dict[str, Any], VoxGrepResult]:
     """
     Main entry point for creating a supercut based on a search query.
-    
+
     Returns:
-        For backward compatibility: True on success, False on failure
-        When successful, returns dict with statistics:
-        {
-            "success": True,
-            "clips_count": int,
-            "supercut_duration": float,
-            "original_duration": float,
-            "time_saved": float,
-            "efficiency_percent": float,
-            "search_query": str,
-            "output_file": str
-        }
+        VoxGrepResult on success (also evaluates to True in boolean context).
+        VoxGrepResult with success=False on failure (evaluates to False).
+        Also provides .to_dict() for backward compatibility with dict access.
     """
+    # Normalize inputs
     files = ensure_list(files)
     query = ensure_list(query)
     query_str = " ".join(query) if isinstance(query, list) else query
 
+    # Normalize search_type
+    if isinstance(search_type, str):
+        search_type_str = search_type
+    else:
+        search_type_str = search_type.value
+
     # Perform search
-    segments = search_module.search(files, query, search_type, exact_match=exact_match)
+    segments = search_module.search(files, query, search_type_str, exact_match=exact_match)
 
     if not segments:
         logger.warning(f"No results found for: {query_str}")
-        return False
+        return VoxGrepResult(success=False, search_query=query_str)
 
     # Handle default padding
     if padding is None:
-        if search_type == "mash":
+        if search_type_str == "mash":
             # Apply micro-padding for word-level cuts to sound more natural
             from ..utils.config import MASH_PADDING
             padding = MASH_PADDING
-        elif search_type == "fragment":
+        elif search_type_str == "fragment":
             padding = DEFAULT_PADDING
         else:
             padding = 0
@@ -163,160 +388,20 @@ def voxgrep(
     if maxclips > 0:
         segments = segments[:maxclips]
 
-    # Mode: Demo (dry run)
+    # Dispatch to appropriate mode handler
     if demo:
-        # Calculate statistics for display
-        supercut_duration = sum(s['end'] - s['start'] for s in segments)
-        
-        if console:
-            from rich.text import Text
-            import re
-            
-            table = Table(title=f"Search Results ({len(segments)} segments)", box=box.ROUNDED)
-            table.add_column("File", style="cyan")
-            table.add_column("Start", justify="right", style="green")
-            table.add_column("End", justify="right", style="red")
-            table.add_column("Content", style="white")
+        return _handle_demo_mode(
+            segments, query, query_str,
+            exact_match=exact_match, console=console
+        )
 
-            for s in segments:
-                # Highlight search terms in content
-                content_text = Text(s['content'])
-                if query:
-                    for q in query:
-                        # Create pattern based on exact_match setting
-                        if exact_match:
-                            pattern = r'\b' + re.escape(q) + r'\b'
-                        else:
-                            pattern = re.escape(q)
-                        
-                        # Find and highlight all matches
-                        for match in re.finditer(pattern, s['content'], re.IGNORECASE):
-                            start_pos = match.start()
-                            end_pos = match.end()
-                            content_text.stylize("bold yellow on blue", start_pos, end_pos)
-                
-                table.add_row(
-                    os.path.basename(s['file']),
-                    f"{s['start']:.2f}s",
-                    f"{s['end']:.2f}s",
-                    content_text
-                )
-            console.print(table)
-        else:
-            for s in segments:
-                print(f"{s['file']} | {s['start']:.2f} - {s['end']:.2f} | {s['content']}")
-        
-        return {
-            "success": True,
-            "clips_count": len(segments),
-            "supercut_duration": supercut_duration,
-            "search_query": query_str,
-            "output_file": None,
-            "mode": "demo"
-        }
-
-    # Mode: Preview (MPV)
     if preview:
-        # Calculate statistics
-        total_clip_duration = sum(s['end'] - s['start'] for s in segments)
-        
-        # Display search results summary
-        if console:
-            stats_table = Table(title="🎬 Preview Statistics", box=box.ROUNDED, border_style="cyan")
-            stats_table.add_column("Metric", style="bold cyan", no_wrap=True)
-            stats_table.add_column("Value", style="bold white", justify="right")
-            
-            stats_table.add_row("Clips Found", f"{len(segments)}")
-            stats_table.add_row("Total Duration", f"{total_clip_duration:.1f}s ({total_clip_duration/60:.1f}m)")
-            
-            if segments:
-                first_match = segments[0]['start']
-                last_match = segments[-1]['end']
-                stats_table.add_row("First Match", f"{first_match:.1f}s ({first_match/60:.1f}m)")
-                stats_table.add_row("Last Match", f"{last_match:.1f}s ({last_match/60:.1f}m)")
-                stats_table.add_row("Time Span", f"{(last_match - first_match):.1f}s")
-            
-            console.print()
-            console.print(stats_table)
-            console.print()
-            console.print("[bold yellow]▶ Launching MPV Preview...[/bold yellow]")
-            console.print("[dim]Press 'q' to quit, Space to pause, Arrow keys to seek[/dim]\n")
-        
-        success = mpv_utils.launch_mpv_preview(segments)
-        
-        if success:
-            if console:
-                console.print()
-                console.print("[bold green]✓ Preview Complete[/bold green]")
-        else:
-            # Fallback: Create .mpv.edl file
-            edl_filename = "preview.mpv.edl"
-            exporter.export_mpv_edl(segments, edl_filename)
-            
-            error_msg = "Could not launch mpv for preview."
-            install_instructions = mpv_utils.get_mpv_install_instructions()
-            
-            logger.error(error_msg)
-            if console:
-                console.print(f"[bold red]Error:[/bold red] {error_msg}")
-                console.print(f"[yellow]{install_instructions}[/yellow]")
-                console.print(f"\n[bold cyan]Fallback:[/bold cyan] Created EDL file at [white]{os.path.abspath(edl_filename)}[/white]")
-                console.print("You can open this file with MPV manually.")
-            
-            return False
-        
-        return {
-            "success": True,
-            "clips_count": len(segments),
-            "supercut_duration": total_clip_duration,
-            "search_query": query_str,
-            "output_file": None,
-            "mode": "preview"
-        }
+        return _handle_preview_mode(segments, query_str, console=console)
 
-    # Ensure output directory exists
-    ensure_directory_exists(os.path.dirname(os.path.abspath(output)))
-
-    # Export Logic
-    if export_clips:
-        exporter.export_individual_clips(segments, output, progress_callback=progress_callback, burn_in_subtitles=burn_in_subtitles)
-    elif output.endswith(".m3u"):
-        exporter.export_m3u(segments, output)
-    elif output.endswith(".mpv.edl"):
-        exporter.export_mpv_edl(segments, output)
-    elif output.endswith(".xml"):
-        exporter.export_xml(segments, output)
-    else:
-        # Create full supercut
-        if len(segments) > BATCH_SIZE:
-            exporter.create_supercut_in_batches(segments, output, progress_callback=progress_callback, burn_in_subtitles=burn_in_subtitles)
-        else:
-            exporter.create_supercut(segments, output, progress_callback=progress_callback, burn_in_subtitles=burn_in_subtitles)
-
-    # Write WebVTT if requested
-    if write_vtt:
-        vtt_path = os.path.splitext(output)[0] + ".vtt"
-        vtt.render(segments, vtt_path)
-        logger.info(f"Subtitle file written to: {vtt_path}")
-    
-    # Calculate and return session statistics
-    supercut_duration = sum(s['end'] - s['start'] for s in segments)
-    
-    # Get original file durations (cached per unique file)
-    unique_files = list(set(s['file'] for s in segments))
-    original_duration = sum(get_file_duration(f) for f in unique_files)
-    
-    time_saved = max(0, original_duration - supercut_duration)
-    efficiency_percent = (time_saved / original_duration * 100) if original_duration > 0 else 0
-    
-    return {
-        "success": True,
-        "clips_count": len(segments),
-        "supercut_duration": supercut_duration,
-        "original_duration": original_duration,
-        "time_saved": time_saved,
-        "efficiency_percent": efficiency_percent,
-        "search_query": query_str,
-        "output_file": output,
-        "mode": "export"
-    }
+    return _handle_export_mode(
+        segments, output, query_str,
+        export_clips=export_clips,
+        write_vtt=write_vtt,
+        progress_callback=progress_callback,
+        burn_in_subtitles=burn_in_subtitles,
+    )

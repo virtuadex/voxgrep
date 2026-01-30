@@ -1,5 +1,6 @@
 import os
 import json
+import gc
 from collections.abc import Callable
 from tqdm import tqdm
 
@@ -15,11 +16,13 @@ try:
 except ImportError:
     MLX_AVAILABLE = False
 
+from .types import DeviceType
 from ..utils.config import (
     DEFAULT_WHISPER_MODEL,
     DEFAULT_MLX_MODEL,
     DEFAULT_DEVICE,
-    DEFAULT_COMPUTE_TYPE
+    DEFAULT_COMPUTE_TYPE,
+    MLX_MODEL_MAPPING
 )
 from ..utils.helpers import setup_logger
 from ..utils.exceptions import (
@@ -32,12 +35,120 @@ from ..utils.audio import normalize_audio as norm_audio, get_normalized_cache_pa
 logger = setup_logger(__name__)
 
 
+def _prepare_audio_input(
+    videofile: str,
+    normalize_audio: bool,
+    progress_callback: Callable | None = None
+) -> str:
+    """
+    Prepare audio input file, optionally normalizing audio levels.
+
+    Args:
+        videofile: Original input file path.
+        normalize_audio: Whether to apply audio normalization.
+        progress_callback: Optional callback for progress updates.
+
+    Returns:
+        Path to the audio file to use (original or normalized).
+    """
+    if not normalize_audio:
+        return videofile
+
+    try:
+        cache_path = get_normalized_cache_path(videofile)
+
+        if should_normalize_audio(videofile):
+            logger.info("Normalizing audio levels for improved transcription...")
+
+            # Notify progress if callback provided
+            if progress_callback:
+                try:
+                    progress_callback(0, 100, text="Normalizing audio levels (this may take a while)...")
+                except Exception:
+                    pass
+
+            normalized_path = norm_audio(videofile, output_file=cache_path)
+            logger.info(f"Using normalized audio: {normalized_path}")
+            return normalized_path
+        else:
+            logger.info(f"Using cached normalized audio: {cache_path}")
+            return cache_path
+
+    except Exception as e:
+        logger.warning(f"Audio normalization failed: {e}. Continuing with original audio.")
+        return videofile
+
+
+def _process_whisper_segment(segment) -> dict:
+    """
+    Convert a faster-whisper segment to standard dict format.
+
+    Args:
+        segment: A faster-whisper Segment object.
+
+    Returns:
+        Dict with content, start, end, words keys.
+    """
+    content = segment.text.strip()
+    start_sec = segment.start
+    end_sec = segment.end
+
+    w_list = []
+    if segment.words:
+        for w in segment.words:
+            w_list.append({
+                "word": w.word.strip(),
+                "start": w.start,
+                "end": w.end,
+                "conf": w.probability
+            })
+
+    return {
+        "content": content,
+        "start": start_sec,
+        "end": end_sec,
+        "words": w_list
+    }
+
+
+def _process_mlx_segment(segment: dict) -> dict:
+    """
+    Convert an mlx-whisper segment dict to standard format.
+
+    Args:
+        segment: An mlx-whisper segment dict.
+
+    Returns:
+        Dict with content, start, end, words keys.
+    """
+    content = segment["text"].strip()
+    start_sec = segment["start"]
+    end_sec = segment["end"]
+
+    w_list = []
+    if "words" in segment:
+        for w in segment["words"]:
+            w_list.append({
+                "word": w["word"].strip(),
+                "start": w["start"],
+                "end": w["end"],
+                "conf": w.get("probability", 1.0)
+            })
+
+    return {
+        "content": content,
+        "start": start_sec,
+        "end": end_sec,
+        "words": w_list
+    }
+
+
 def transcribe_whisper(
-    videofile: str, 
-    model_name: str = DEFAULT_WHISPER_MODEL, 
-    prompt: str | None = None, 
-    language: str | None = None, 
-    device: str = DEFAULT_DEVICE, 
+    videofile: str,
+    model_name: str = DEFAULT_WHISPER_MODEL,
+    prompt: str | None = None,
+    language: str | None = None,
+    device: str | DeviceType = DEFAULT_DEVICE,
     compute_type: str = DEFAULT_COMPUTE_TYPE,
     progress_callback: Callable | None = None,
     beam_size: int = 5,
@@ -50,7 +161,7 @@ def transcribe_whisper(
     """
     Transcribes a video file using faster-whisper (CTranslate2)
     With word-level timestamps enabled.
-    
+
     Args:
         progress_callback: Optional callback function(current_seconds, total_seconds)
         beam_size: Beam size for beam search (higher = more accurate but slower). Default: 5
@@ -65,37 +176,16 @@ def transcribe_whisper(
             "faster-whisper is not installed. Install with 'pip install faster-whisper'"
         )
 
+    # Normalize device to string
+    if isinstance(device, DeviceType):
+        device = device.value
+
     logger.info(f"Transcribing {videofile} using faster-whisper ({model_name} model) on {device}")
     logger.info(f"Accuracy settings: beam_size={beam_size}, best_of={best_of}, vad_filter={vad_filter}, normalize_audio={normalize_audio}, translate={translate}")
-    
+
     # Audio normalization pre-processing
-    actual_input_file = videofile
-    if normalize_audio:
-        try:
-            from ..utils.audio import normalize_audio as norm_audio, get_normalized_cache_path, should_normalize_audio
-            
-            cache_path = get_normalized_cache_path(videofile)
-            
-            if should_normalize_audio(videofile):
-                logger.info("Normalizing audio levels for improved transcription...")
-                
-                # Notify progress
-                if progress_callback:
-                    try:
-                        progress_callback(0, 100, text="Normalizing audio levels (this may take a while)...")
-                    except Exception:
-                        pass
-                        
-                actual_input_file = norm_audio(videofile, output_file=cache_path)
-                logger.info(f"Using normalized audio: {actual_input_file}")
-            else:
-                actual_input_file = cache_path
-                logger.info(f"Using cached normalized audio: {actual_input_file}")
-                
-        except Exception as e:
-            logger.warning(f"Audio normalization failed: {e}. Continuing with original audio.")
-            actual_input_file = videofile
-    
+    actual_input_file = _prepare_audio_input(videofile, normalize_audio, progress_callback)
+
     # Load model
     try:
         model = WhisperModel(model_name, device=device, compute_type=compute_type)
@@ -109,11 +199,11 @@ def transcribe_whisper(
                 raise TranscriptionFailedError(f"Fallback to CPU failed: {e2}") from e2
         else:
             raise TranscriptionFailedError(f"Failed to load Whisper model: {e}") from e
-    
+
     # Transcribe with advanced parameters
     try:
         logger.info(f"Starting transcription with {model_name} model...")
-        
+
         # Build transcription parameters
         transcribe_params = {
             "word_timestamps": True,
@@ -124,24 +214,24 @@ def transcribe_whisper(
             "vad_filter": vad_filter,
             "task": "translate" if translate else "transcribe"
         }
-        
+
         # Add VAD parameters if provided
         if vad_parameters:
             transcribe_params["vad_parameters"] = vad_parameters
-        
+
         segments_generator, info = model.transcribe(actual_input_file, **transcribe_params)
-        
+
         logger.info(f"Transcription started. Detected language: {info.language}")
-        
+
         out = []
-        
+
         # Use callback if provided, otherwise use tqdm
         try:
             if progress_callback:
                 current_time = 0
                 for segment in segments_generator:
                     current_time = segment.end
-                    
+
                     content = segment.text.strip()
                     # Pass text to callback if it accepts kwargs or 3 args
                     try:
@@ -149,87 +239,46 @@ def transcribe_whisper(
                     except TypeError:
                         # Fallback for old callbacks
                         progress_callback(current_time, info.duration)
-                    
-                    start_sec = segment.start
-                    end_sec = segment.end
-                    
-                    w_list = []
-                    if segment.words:
-                        for w in segment.words:
-                            w_list.append({
-                                "word": w.word.strip(),
-                                "start": w.start,
-                                "end": w.end,
-                                "conf": w.probability
-                            })
-                    
-                    item = {
-                        "content": content,
-                        "start": start_sec,
-                        "end": end_sec,
-                        "words": w_list
-                    }
-                    
-                    out.append(item)
+
+                    out.append(_process_whisper_segment(segment))
             else:
                 # Fallback to tqdm for non-CLI usage
                 pbar = tqdm(total=info.duration, unit="sec", desc="Transcribing", bar_format="{l_bar}{bar}| {n:.2f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]")
-                
+
                 for segment in segments_generator:
                     pbar.update(segment.end - pbar.n)
-                    
+
                     content = segment.text.strip()
                     # Print active segment to tqdm
                     pbar.write(f"[{segment.start:.2f}s] {content}")
-                    
-                    start_sec = segment.start
-                    end_sec = segment.end
-                    
-                    w_list = []
-                    if segment.words:
-                        for w in segment.words:
-                            w_list.append({
-                                "word": w.word.strip(),
-                                "start": w.start,
-                                "end": w.end,
-                                "conf": w.probability
-                            })
-                    
-                    item = {
-                        "content": content,
-                        "start": start_sec,
-                        "end": end_sec,
-                        "words": w_list
-                    }
-                    
-                    out.append(item)
-                
+
+                    out.append(_process_whisper_segment(segment))
+
                 pbar.close()
-        
+
         except KeyboardInterrupt:
             logger.warning(f"Transcription cancelled by user. Saving {len(out)} partial segments...")
             if not progress_callback:
                 pbar.close()
             # Continue to save partial results below
-        
+
         logger.info(f"Processed {len(out)} segments.")
-        
+
         # Explicitly cleanup model to avoid crashes on return
         del model
-        import gc
         gc.collect()
-        
+
     except Exception as e:
         logger.error(f"Error during transcription: {e}")
         raise TranscriptionFailedError(f"Whisper transcription failed: {e}") from e
-        
+
     return out
 
 
 def transcribe_mlx(
-    videofile: str, 
-    model_name: str = DEFAULT_MLX_MODEL, 
-    language: str | None = None, 
+    videofile: str,
+    model_name: str = DEFAULT_MLX_MODEL,
+    language: str | None = None,
     prompt: str | None = None,
     normalize_audio: bool = False
 ) -> list[dict]:
@@ -245,22 +294,7 @@ def transcribe_mlx(
     logger.info(f"Transcribing {videofile} using mlx-whisper ({model_name})")
 
     # Audio normalization pre-processing
-    actual_input_file = videofile
-    if normalize_audio:
-        try:
-            cache_path = get_normalized_cache_path(videofile)
-            
-            if should_normalize_audio(videofile):
-                logger.info("Normalizing audio levels for improved transcription...")
-                actual_input_file = norm_audio(videofile, output_file=cache_path)
-                logger.info(f"Using normalized audio: {actual_input_file}")
-            else:
-                actual_input_file = cache_path
-                logger.info(f"Using cached normalized audio: {actual_input_file}")
-                
-        except Exception as e:
-            logger.warning(f"Audio normalization failed: {e}. Continuing with original audio.")
-            actual_input_file = videofile
+    actual_input_file = _prepare_audio_input(videofile, normalize_audio)
 
     try:
         # mlx_whisper.transcribe returns "text" and "segments" in a dict
@@ -271,32 +305,12 @@ def transcribe_mlx(
             language=language,
             initial_prompt=prompt
         )
-        
+
         out = []
         # result["segments"] is a list of dicts
         for segment in result["segments"]:
-            content = segment["text"].strip()
-            start_sec = segment["start"]
-            end_sec = segment["end"]
-            
-            w_list = []
-            if "words" in segment:
-                for w in segment["words"]:
-                    w_list.append({
-                        "word": w["word"].strip(),
-                        "start": w["start"],
-                        "end": w["end"],
-                        "conf": w.get("probability", 1.0)
-                    })
-            
-            item = {
-                "content": content,
-                "start": start_sec,
-                "end": end_sec,
-                "words": w_list
-            }
-            out.append(item)
-            
+            out.append(_process_mlx_segment(segment))
+
         logger.info(f"Processed {len(out)} segments.")
         return out
 
@@ -306,11 +320,11 @@ def transcribe_mlx(
 
 
 def transcribe(
-    videofile: str, 
-    model_name: str | None = None, 
-    prompt: str | None = None, 
-    language: str | None = None, 
-    device: str = DEFAULT_DEVICE, 
+    videofile: str,
+    model_name: str | None = None,
+    prompt: str | None = None,
+    language: str | None = None,
+    device: str | DeviceType = DEFAULT_DEVICE,
     compute_type: str = DEFAULT_COMPUTE_TYPE,
     progress_callback: Callable | None = None,
     on_existing_transcript: Callable | None = None,
@@ -323,7 +337,7 @@ def transcribe(
 ) -> list[dict]:
     """
     Transcribes a video file using Whisper, handling caching and backend selection.
-    
+
     Args:
         progress_callback: Optional callback function(current_seconds, total_seconds)
         on_existing_transcript: Optional callback(metadata) -> bool to ask user about reusing transcript.
@@ -338,28 +352,22 @@ def transcribe(
     if not os.path.exists(videofile):
         raise VoxGrepFileNotFoundError(f"Could not find file {videofile}")
 
+    # Normalize device to string
+    if isinstance(device, DeviceType):
+        device = device.value
+
     # Transcript file is based on the input filename
     transcript_file = os.path.splitext(videofile)[0] + ".json"
     metadata_file = os.path.splitext(videofile)[0] + ".transcript_meta.json"
-    
+
     # Determine the model to use
     if device == "mlx":
-        MLX_MODEL_MAPPING = {
-            "tiny": "mlx-community/whisper-tiny-mlx",
-            "base": "mlx-community/whisper-base-mlx",
-            "small": "mlx-community/whisper-small-mlx",
-            "medium": "mlx-community/whisper-medium-mlx",
-            "large": "mlx-community/whisper-large-v3-mlx",
-            "large-v3": "mlx-community/whisper-large-v3-mlx",
-            "large-v2": "mlx-community/whisper-large-v2-mlx",
-            "distil-large-v3": "mlx-community/distil-whisper-large-v3"
-        }
         _model = model_name or DEFAULT_MLX_MODEL
         if _model in MLX_MODEL_MAPPING:
             _model = MLX_MODEL_MAPPING[_model]
     else:
         _model = model_name or DEFAULT_WHISPER_MODEL
-    
+
     # Current transcription metadata
     current_metadata = {
         "model": _model,
@@ -376,33 +384,33 @@ def transcribe(
     if os.path.exists(transcript_file):
         # Check if metadata exists and matches
         should_reuse = True
-        
+
         if os.path.exists(metadata_file):
             try:
                 with open(metadata_file, "r", encoding="utf-8") as meta_file:
                     existing_metadata = json.load(meta_file)
-                    
+
                 # Check significant changes
                 changes = []
                 if existing_metadata.get("model") != current_metadata["model"]:
                     changes.append(f"Model: {existing_metadata.get('model')} -> {current_metadata['model']}")
-                
+
                 if existing_metadata.get("device") != current_metadata["device"]:
                     changes.append(f"Device: {existing_metadata.get('device')} -> {current_metadata['device']}")
-                
+
                 # Check detailed settings (default to standard values if missing)
                 existing_beam = existing_metadata.get("beam_size", 5)
                 if existing_beam != current_metadata["beam_size"]:
                     changes.append(f"Beam Size: {existing_beam} -> {current_metadata['beam_size']}")
-                
+
                 existing_vad = existing_metadata.get("vad_filter", True)
                 if existing_vad != current_metadata["vad_filter"]:
                     changes.append(f"VAD: {existing_vad} -> {current_metadata['vad_filter']}")
-                
+
                 existing_prompt = existing_metadata.get("has_prompt", False)
                 if existing_prompt != current_metadata["has_prompt"]:
                     changes.append(f"Vocabulary Prompt: {existing_prompt} -> {current_metadata['has_prompt']}")
-                
+
                 existing_trans = existing_metadata.get("translate", False)
                 if existing_trans != current_metadata["translate"]:
                     changes.append(f"Translate: {existing_trans} -> {current_metadata['translate']}")
@@ -419,7 +427,7 @@ def transcribe(
                         )
             except (json.JSONDecodeError, KeyError):
                 logger.warning(f"Could not read metadata file {metadata_file}")
-        
+
         if should_reuse:
             try:
                 with open(transcript_file, "r", encoding="utf-8") as infile:
@@ -430,17 +438,17 @@ def transcribe(
                 logger.warning(f"Existing transcript file {transcript_file} is corrupt. Regenerating...")
 
     out = []
-    
+
     # Check backend selection and transcribe
     if device == "mlx":
         out = transcribe_mlx(videofile, _model, language=language, prompt=prompt, normalize_audio=normalize_audio)
     else:
         out = transcribe_whisper(
-            videofile, 
-            _model, 
-            prompt=prompt, 
-            language=language, 
-            device=device, 
+            videofile,
+            _model,
+            prompt=prompt,
+            language=language,
+            device=device,
             compute_type=compute_type,
             progress_callback=progress_callback,
             beam_size=beam_size,
@@ -459,7 +467,7 @@ def transcribe(
     logger.info(f"Saving transcript to {transcript_file}")
     with open(transcript_file, "w", encoding="utf-8") as outfile:
         json.dump(out, outfile)
-    
+
     # Save metadata
     with open(metadata_file, "w", encoding="utf-8") as meta_file:
         json.dump(current_metadata, meta_file, indent=2)

@@ -12,9 +12,9 @@ Supports model hot-swapping and performance optimization.
 import os
 from typing import List, Optional, Dict, Any, Callable
 from dataclasses import dataclass
-from enum import Enum
 from abc import ABC, abstractmethod
 
+from ..core.types import TranscriptionBackend, TranscriptionResult as CoreTranscriptionResult
 from ..utils.config import (
     DEFAULT_WHISPER_MODEL,
     DEFAULT_MLX_MODEL,
@@ -25,14 +25,6 @@ from ..utils.config import (
 from ..utils.helpers import setup_logger
 
 logger = setup_logger(__name__)
-
-
-class TranscriptionBackend(str, Enum):
-    """Available transcription backends."""
-    FASTER_WHISPER = "faster-whisper"
-    MLX_WHISPER = "mlx-whisper"
-    OPENAI_API = "openai-api"
-    TRANSFORMERS = "transformers"
 
 
 @dataclass

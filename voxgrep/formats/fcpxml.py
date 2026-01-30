@@ -5,7 +5,7 @@ import os
 
 # https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/FinalCutPro_XML/Basics/Basics.html#//apple_ref/doc/uid/TP30001154-DontLinkElementID_60
 
-FPS = 30
+DEFAULT_FPS = 30
 
 
 @lru_cache(maxsize=None)
@@ -35,6 +35,7 @@ class Clip:
     :param end float: When the clip ends in the timeline
     :param clip_in float: The in-point of the clip
     :param clip_out float: The out-point of the clip
+    :param fps int: Frames per second (default: DEFAULT_FPS)
 
     """
 
@@ -46,6 +47,7 @@ class Clip:
         end: float,
         clip_in: float,
         clip_out: float,
+        fps: int = DEFAULT_FPS,
     ):
         self.clip = get_clip(filename)
         self.full_path = os.path.abspath(filename)
@@ -53,7 +55,7 @@ class Clip:
         self.shot_name = os.path.basename(filename)
         self.clip_id = f"{self.shot_name}-{clip_id}"
         self.audio_clip_id = f"{self.clip_id}-audio"
-        self.fps = FPS
+        self.fps = fps
         self.width = self.clip.w
         self.height = self.clip.h
         self.duration = self.frames(self.clip.duration)
@@ -186,9 +188,10 @@ class Sequence:
 
     :param segments List[dict]: Timestamps of clips in the format [{start, end, file}]
     :param project_name str: A project name
+    :param fps int: Frames per second (default: DEFAULT_FPS)
     """
 
-    def __init__(self, segments: List[dict], project_name: str):
+    def __init__(self, segments: List[dict], project_name: str, fps: int = DEFAULT_FPS):
         clips = []
 
         start = 0
@@ -205,6 +208,7 @@ class Sequence:
                 clip_out=s["end"],
                 start=start,
                 end=end,
+                fps=fps,
             )
             clips.append(clip)
             start = end
@@ -212,7 +216,7 @@ class Sequence:
         self.clips = clips
         self.track_duration = clips[0].frames(track_duration)
         self.project_name = project_name
-        self.fps = FPS
+        self.fps = fps
         self.width = clips[0].width
         self.height = clips[0].height
 
@@ -299,14 +303,15 @@ class Sequence:
             </xmeml>"""
 
 
-def compose(segments: List[dict], outname: str):
+def compose(segments: List[dict], outname: str, fps: int = DEFAULT_FPS):
     """
     Takes a list of timestamps and saves a Final Cut Pro xml file
 
     :param segments List[dict]: List of timestamps
     :param outname str: File to save output to
+    :param fps int: Frames per second (default: DEFAULT_FPS)
     """
-    s = Sequence(segments, outname)
+    s = Sequence(segments, outname, fps=fps)
 
     # output = minidom.parseString(output)
     with open(outname, "w") as outfile:

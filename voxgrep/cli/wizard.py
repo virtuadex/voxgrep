@@ -77,7 +77,7 @@ class InteractiveWizard:
         """Handle file selection phase."""
         from .workflows import select_input_files
 
-        input_files = select_input_files()
+        input_files = select_input_files(self.ctx)
         if not input_files:
             return WizardPhase.EXIT
 
@@ -130,6 +130,7 @@ class InteractiveWizard:
         if self.session is None:
             return WizardPhase.FILE_SELECTION
 
+        # Note: manage_files_menu doesn't support ctx yet - uses questionary directly
         self.session.input_files = manage_files_menu(self.session.input_files)
 
         if not self.session.input_files:
@@ -145,7 +146,7 @@ class InteractiveWizard:
         if self.session is None:
             return WizardPhase.FILE_SELECTION
 
-        ignored_words, use_ignored_words = settings_menu(self.prefs)
+        ignored_words, use_ignored_words = settings_menu(self.prefs, self.ctx)
         self.session.search.ignored_words = ignored_words
         self.session.search.use_ignored_words = use_ignored_words
 
@@ -161,16 +162,16 @@ class InteractiveWizard:
         if self.current_task == "transcribe":
             self.session.transcribe = True
             args = self.session.to_namespace()
-            configure_transcription(args, self.prefs)
+            configure_transcription(args, self.prefs, self.ctx)
             self.session = SessionConfig.from_namespace(args)
             return WizardPhase.TASK_EXECUTION
 
         if self.current_task == "ngrams":
-            should_transcribe, missing_files = check_transcripts(self.session.input_files)
+            should_transcribe, missing_files = check_transcripts(self.session.input_files, self.ctx)
             if should_transcribe:
                 self.session.transcribe = True
                 args = self.session.to_namespace()
-                configure_transcription(args, self.prefs)
+                configure_transcription(args, self.prefs, self.ctx)
                 self.session = SessionConfig.from_namespace(args)
             elif missing_files:
                 self.ctx.console.print("[bold red]Error: Cannot calculate n-grams without transcripts.[/bold red]")
@@ -178,11 +179,11 @@ class InteractiveWizard:
             return WizardPhase.TASK_EXECUTION
 
         # search task
-        should_transcribe, _ = check_transcripts(self.session.input_files)
+        should_transcribe, _ = check_transcripts(self.session.input_files, self.ctx)
         if should_transcribe:
             self.session.transcribe = True
             args = self.session.to_namespace()
-            configure_transcription(args, self.prefs)
+            configure_transcription(args, self.prefs, self.ctx)
             self.session = SessionConfig.from_namespace(args)
 
         return WizardPhase.TASK_EXECUTION
@@ -344,7 +345,8 @@ class InteractiveWizard:
                 self.session.export.demo = False
                 self.session.export.output = get_output_filename(
                     self.session.search.query,
-                    default_out
+                    default_out,
+                    self.ctx
                 )
 
                 result = run_voxgrep_search(
@@ -390,7 +392,7 @@ class InteractiveWizard:
             return
 
         args = self.session.to_namespace()
-        search_settings_menu(args)
+        search_settings_menu(args, self.ctx)
         self.session = SessionConfig.from_namespace(args)
 
     def _execute_ngrams_workflow(self) -> bool:
@@ -407,7 +409,7 @@ class InteractiveWizard:
             return False
 
         # Double-check transcripts
-        _, missing_files = check_transcripts(self.session.input_files)
+        _, missing_files = check_transcripts(self.session.input_files, self.ctx)
         if missing_files:
             self.ctx.console.print("[red]Cannot proceed with n-grams: Transcripts missing.[/red]")
             return False
@@ -418,7 +420,7 @@ class InteractiveWizard:
 
         # Run the interactive workflow
         args = self.session.to_namespace()
-        interactive_ngrams_workflow(args)
+        interactive_ngrams_workflow(args, self.ctx)
 
         self.ctx.console.print("\n[dim]--- Task Complete ---[/dim]\n")
         return True

@@ -1,7 +1,21 @@
+"""
+PocketSphinx-based transcription and parsing.
+
+.. deprecated::
+    This module uses PocketSphinx which is now considered legacy.
+    For new projects, use ``voxgrep.core.transcriber`` with Whisper
+    (MLX, faster-whisper, or OpenAI API) for significantly better
+    accuracy and word-level timestamps.
+
+    This module is retained for backwards compatibility with existing
+    PocketSphinx transcript files.
+"""
+
 import re
 import io
 import os
 from subprocess import run
+from typing import Union, List
 
 
 def convert_to_wav(videofile:str) -> str:
@@ -58,7 +72,7 @@ def transcribe(videofile:str) -> str:
     return transcript
 
 
-def parse(transcript):
+def parse(transcript: Union[io.IOBase, str]) -> List[dict]:
     """
     Parses pocketsphinx transcript and returns timestamps for words and lines
     """

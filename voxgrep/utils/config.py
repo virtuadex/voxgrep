@@ -33,6 +33,18 @@ MASH_PADDING = 0.05  # Micro-padding in seconds for word-level cuts (50ms)
 DEFAULT_WHISPER_MODEL = "large-v3"
 DEFAULT_MLX_MODEL = "mlx-community/whisper-large-v3-mlx"
 
+# MLX model name mappings (short name -> HuggingFace repo)
+MLX_MODEL_MAPPING = {
+    "tiny": "mlx-community/whisper-tiny-mlx",
+    "base": "mlx-community/whisper-base-mlx",
+    "small": "mlx-community/whisper-small-mlx",
+    "medium": "mlx-community/whisper-medium-mlx",
+    "large": "mlx-community/whisper-large-v3-mlx",
+    "large-v3": "mlx-community/whisper-large-v3-mlx",
+    "large-v2": "mlx-community/whisper-large-v2-mlx",
+    "distil-large-v3": "mlx-community/distil-whisper-large-v3",
+}
+
 def get_best_device() -> str:
     """Detect the best available device for transcription."""
     import platform

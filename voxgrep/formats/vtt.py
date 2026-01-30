@@ -1,6 +1,5 @@
 import re
 import io
-from bs4 import BeautifulSoup
 from typing import Union, List
 
 

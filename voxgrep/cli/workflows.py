@@ -118,61 +118,72 @@ def download_from_url(url: str, output_dir: str = ".") -> str | None:
                 return None
 
 
-def select_input_files() -> list[str] | None:
+def select_input_files(ctx: Optional["CLIContext"] = None) -> list[str] | None:
     """
     Interactive file selection workflow with URL download support.
-    
+
+    Args:
+        ctx: Optional CLI context for prompts
+
     Returns:
         List of selected file paths, or None if cancelled
     """
+    prompts = ctx.prompts if ctx else None
+
     available_files = []
     for f in os.listdir("."):
         if os.path.isfile(f) and any(f.lower().endswith(ext) for ext in MEDIA_EXTENSIONS):
             available_files.append(f)
-    
+
     available_files.sort()
-    
+
     input_files = []
-    
+
     # Build choice list
     select_choices = []
-    
+
     # Always offer URL download option
     if check_ytdlp_available():
-        select_choices.append(questionary.Choice("📥 Download from URL (YouTube, etc.)", value="__url__"))
+        select_choices.append(questionary.Choice("Download from URL (YouTube, etc.)", value="__url__"))
         select_choices.append(questionary.Separator())
-    
+
     if available_files:
         if len(available_files) > 1:
             select_choices.append(questionary.Choice("--- ALL FILES ---", value="__all__"))
             select_choices.append(questionary.Choice("--- CHOOSE MULTIPLE... ---", value="__multiple__"))
-        
+
         for f in available_files:
             select_choices.append(f)
-        
+
         select_choices.append(questionary.Separator())
-        select_choices.append(questionary.Choice("📁 Enter path manually...", value="__manual__"))
+        select_choices.append(questionary.Choice("Enter path manually...", value="__manual__"))
     else:
-        select_choices.append(questionary.Choice("📁 Enter path or glob pattern...", value="__manual__"))
-    
-    selection = questionary.select(
-        "Select input source:",
-        choices=select_choices,
-        style=questionary.Style([('highlighted', 'fg:black bg:cyan bold')])
-    ).ask()
+        select_choices.append(questionary.Choice("Enter path or glob pattern...", value="__manual__"))
+
+    if prompts:
+        selection = prompts.select("Select input source:", select_choices)
+    else:
+        selection = questionary.select(
+            "Select input source:",
+            choices=select_choices,
+            style=questionary.Style([('highlighted', 'fg:black bg:cyan bold')])
+        ).ask()
 
     if selection is None:
         return None
-    
+
     if selection == "__url__":
-        url = questionary.text(
-            "Enter video URL:",
-            validate=lambda x: len(x.strip()) > 0
-        ).ask()
-        
+        if prompts:
+            url = prompts.text("Enter video URL:")
+        else:
+            url = questionary.text(
+                "Enter video URL:",
+                validate=lambda x: len(x.strip()) > 0
+            ).ask()
+
         if not url:
             return None
-        
+
         downloaded_file = download_from_url(url.strip())
         if downloaded_file:
             input_files = [downloaded_file]
@@ -182,17 +193,26 @@ def select_input_files() -> list[str] | None:
     elif selection == "__all__":
         input_files = available_files
     elif selection == "__multiple__":
-        input_files = questionary.checkbox(
-            "Select multiple files (Space to toggle, Enter to confirm):",
-            choices=available_files
-        ).ask()
+        if prompts:
+            input_files = prompts.checkbox(
+                "Select multiple files (Space to toggle, Enter to confirm):",
+                available_files
+            )
+        else:
+            input_files = questionary.checkbox(
+                "Select multiple files (Space to toggle, Enter to confirm):",
+                choices=available_files
+            ).ask()
         if not input_files:
             return None
     elif selection == "__manual__":
-        manual_path = questionary.text("Enter video file paths (comma separated, supports globs):").ask()
+        if prompts:
+            manual_path = prompts.text("Enter video file paths (comma separated, supports globs):")
+        else:
+            manual_path = questionary.text("Enter video file paths (comma separated, supports globs):").ask()
         if not manual_path:
             return None
-            
+
         for path in manual_path.split(','):
             path = path.strip()
             expanded = glob.glob(path)
